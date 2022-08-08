@@ -1,0 +1,70 @@
+//scalar BFECC step1 shader
+
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#ifdef GLSLANGVALIDATOR
+    #define FORMAT r16f
+#endif
+
+uniform layout (binding = 0) sampler3D velocity;
+uniform layout (binding = 1) sampler3D phiNTex;
+uniform layout (binding = 2) sampler3D phiTildeTex;
+uniform layout(FORMAT, binding = 0) writeonly restrict image3D phiTilde2Tex;
+
+layout (std140, binding = 10) uniform timeData
+{
+    float deltaTime;
+};
+
+layout (std140, binding = 11) uniform advectData
+{
+    int mode;
+    int limiter;
+    int pad1;
+    int pad2;
+};
+
+void main() 
+{
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID);
+    ivec3 textureSize = imageSize(phiTilde2Tex);
+    if(texelPos.x < textureSize.x 
+    && texelPos.y < textureSize.y
+    && texelPos.z < textureSize.z
+    )
+    {
+        vec3 uvw = (vec3(texelPos)+0.5)/vec3(textureSize);
+        
+        //negative since this step tracks backward in time
+        const float dt = -deltaTime;
+        const vec3 p0 = uvw;
+        const vec3 v0 = textureLod(velocity, p0, 0).xyz;
+        vec3 pos;
+        if(mode == 0)
+        {
+            // Euler
+            pos = uvw - dt * v0;
+        }
+        else
+        {
+            // RK4
+            const vec3 p1 = p0 - dt*0.5*v0;
+            const vec3 v1 = textureLod(velocity, p1, 0).xyz;
+            const vec3 p2 = p0 - dt*0.5*v1;
+            const vec3 v2 = textureLod(velocity, p2, 0).xyz;
+            const vec3 p3 = p0 - v2*dt;
+            const vec3 v3 = textureLod(velocity, p3, 0).xyz;
+            const vec3 v = (v0 + 2*v1 + 2*v2 + v3)/6.0;
+            pos = uvw - dt * v;
+        }
+
+        const float phiTildeAdvected = textureLod(phiTildeTex, pos, 0).x;
+        const float phiN = texelFetch(phiNTex, texelPos, 0).x;
+
+        const float phiTilde2 = phiN + (phiN - phiTildeAdvected)/2;
+
+        imageStore(phiTilde2Tex, texelPos, vec4(phiTilde2));
+    }
+}

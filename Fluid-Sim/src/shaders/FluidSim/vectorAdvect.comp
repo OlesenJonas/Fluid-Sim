@@ -1,0 +1,75 @@
+//vector advection shader
+
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#ifdef GLSLANGVALIDATOR
+    #define FORMAT rgba16f
+#endif
+
+uniform layout (binding = 0) sampler3D velocity;
+uniform layout (binding = 1) sampler3D attributeIn;
+uniform layout(FORMAT, binding = 0) writeonly restrict image3D attributeOut;
+
+layout (std140, binding = 10) uniform timeData
+{
+    float deltaTime;
+};
+
+layout (std140, binding = 11) uniform advectData
+{
+    int mode;
+    int limiter;
+    int pad1;
+    int pad2;
+};
+
+layout(location = 0) uniform float factor;
+
+void main() 
+{
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID);
+    ivec3 textureSize = imageSize(attributeOut);
+    if(texelPos.x < textureSize.x 
+    && texelPos.y < textureSize.y
+    && texelPos.z < textureSize.z
+    )
+    {
+        // if(texelPos.x == 0 || texelPos.x == textureSize.x-1
+        // || texelPos.y == 0 || texelPos.y == textureSize.y-1
+        // || texelPos.z == 0 || texelPos.z == textureSize.z-1)
+        // {
+        //     imageStore(velocityOut, texelPos, vec4(0.0));
+        //     return;
+        // }
+
+        vec3 uvw = (vec3(texelPos)+0.5)/vec3(textureSize);
+
+        const float dt = deltaTime;
+        const vec3 p0 = uvw;
+        const vec3 v0 = textureLod(velocity, p0, 0).xyz;
+        vec3 pos;
+        if(mode == 0)
+        {
+            // Euler
+            pos = uvw - dt * v0;
+        }
+        else
+        {
+            // RK4
+            const vec3 p1 = p0 - dt*0.5*v0;
+            const vec3 v1 = textureLod(velocity, p1, 0).xyz;
+            const vec3 p2 = p0 - dt*0.5*v1;
+            const vec3 v2 = textureLod(velocity, p2, 0).xyz;
+            const vec3 p3 = p0 - v2*dt;
+            const vec3 v3 = textureLod(velocity, p3, 0).xyz;
+            const vec3 v = (v0 + 2*v1 + 2*v2 + v3)/6.0;
+            pos = uvw - dt * v;
+        }
+
+
+        vec4 newVel = factor*textureLod(attributeIn, pos, 0);
+        imageStore(attributeOut, texelPos, newVel);
+    }
+}

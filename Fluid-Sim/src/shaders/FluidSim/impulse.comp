@@ -1,0 +1,58 @@
+//impulse shader
+
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#ifndef VECTOR_FORMAT
+    #define VECTOR_FORMAT rgba16f
+#endif
+#ifndef SCALAR_FORMAT
+    #define SCALAR_FORMAT r16f
+#endif
+
+uniform layout (binding = 0) sampler3D velocityIn;
+uniform layout (binding = 1) sampler3D temperatureIn;
+uniform layout (binding = 2) sampler3D densityIn;
+uniform layout(VECTOR_FORMAT, binding = 0) writeonly restrict image3D velocityOut;
+uniform layout(SCALAR_FORMAT, binding = 1) writeonly restrict image3D temperatureOut;
+uniform layout(SCALAR_FORMAT, binding = 2) writeonly restrict image3D densityOut;
+
+layout (std140, binding = 10) uniform timeData
+{
+    float deltaTime;
+};
+
+//todo: UBO?
+uniform layout (location = 0) vec3 impulseCenter = vec3(0.1, 0.1, 0.2);
+uniform layout (location = 1) float densityImp = 2.0;
+uniform layout (location = 2) vec3 velImp = vec3(0.8,0.8,0.7);
+uniform layout (location = 3) float tempImp = 1;
+uniform layout (location = 4) float impSize = 0.05;
+
+void main() 
+{
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID);
+    ivec3 textureSize = imageSize(densityOut);
+    if(texelPos.x < textureSize.x 
+    && texelPos.y < textureSize.y
+    && texelPos.z < textureSize.z
+    )
+    {
+        vec3 uvw = (vec3(texelPos)+0.5)/vec3(textureSize);
+
+        float temp = texelFetch(temperatureIn, texelPos, 0).x;
+        float density = texelFetch(densityIn, texelPos, 0).x;
+        vec3 vel = texelFetch(velocityIn, texelPos, 0).xyz;
+
+        float dist = length(uvw - impulseCenter)/(impSize);
+        float weight = clamp(exp(-dist*dist),0.0,1.0);
+
+        temp = mix(temp, tempImp, weight);
+        density = mix(density, densityImp, weight);
+        vel = mix(vel, velImp, weight);
+        imageStore(velocityOut, texelPos, vec4(vel,1.0));
+        imageStore(temperatureOut, texelPos, vec4(temp));
+        imageStore(densityOut, texelPos, vec4(density));
+    }
+}

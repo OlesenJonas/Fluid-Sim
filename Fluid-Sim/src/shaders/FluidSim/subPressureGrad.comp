@@ -1,0 +1,94 @@
+//pressure gradient subtraction shader
+
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#ifndef FORMAT
+    #define FORMAT rgba16f
+#endif
+
+uniform layout (binding = 0) sampler3D pressure;
+uniform layout (binding = 1) sampler3D velocityIn;
+uniform layout(FORMAT, binding = 0) writeonly restrict image3D velocityOut;
+
+void main() 
+{
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID);
+    ivec3 textureSize = imageSize(velocityOut);
+    if(texelPos.x < textureSize.x 
+    && texelPos.y < textureSize.y 
+    && texelPos.z < textureSize.z
+    )
+    {
+        // if(texelPos.x == 0 || texelPos.x == textureSize.x-1
+        // || texelPos.y == 0 || texelPos.y == textureSize.y-1
+        // || texelPos.z == 0 || texelPos.z == textureSize.z-1)
+        // {
+        //     imageStore(velocityOut, texelPos, vec4(0.0));
+        //     return;
+        // }
+
+        // vec2 uv = (vec2(texelPos)+0.5)/vec2(textureSize);
+        float xprev = texelFetchOffset(pressure, texelPos, 0, ivec3(-1, 0, 0)).x;
+        float xnext = texelFetchOffset(pressure, texelPos, 0, ivec3( 1, 0, 0)).x;
+        float yprev = texelFetchOffset(pressure, texelPos, 0, ivec3( 0,-1, 0)).x;
+        float ynext = texelFetchOffset(pressure, texelPos, 0, ivec3( 0, 1, 0)).x;
+        float zprev = texelFetchOffset(pressure, texelPos, 0, ivec3( 0, 0,-1)).x;
+        float znext = texelFetchOffset(pressure, texelPos, 0, ivec3( 0, 0, 1)).x;
+
+        float center  = texelFetch(pressure, texelPos, 0).x;
+
+        //enforce the boundary conditions
+        //(borders need to have same pressure as their neighbours so that gradient is 0)
+        //(also cancel out velocity orthogonal to boundary normal, ie: for top border->remove vertical component of velocity
+        // so that velocity only moves along border, not through it)
+        //(in theory actually have to replace component with obstacles velocity, but only walls here where v=0)
+        vec3 velocityMask = vec3(1.0);
+        if(texelPos.x == 0)
+        {
+            xprev = center;
+            velocityMask.x = 0;
+        }
+        if(texelPos.x == textureSize.x-1)
+        {
+            xnext = center;
+            velocityMask.x = 0;
+        }
+        if(texelPos.y == 0)
+        {
+            yprev = center;
+            velocityMask.y = 0;
+        }
+        if(texelPos.y == textureSize.y-1)
+        {
+            ynext = center;
+            velocityMask.y = 0;
+        }
+        if(texelPos.z == 0)
+        {
+            zprev = center;
+            velocityMask.z = 0;
+        }
+        if(texelPos.z == textureSize.z-1)
+        {
+            znext = center;
+            velocityMask.z = 0;
+        }
+        
+        const float deltaX = 1.0/textureSize.x;
+        const float deltaY = 1.0/textureSize.y;
+        const float deltaZ = 1.0/textureSize.z;
+
+        vec3 gradient = vec3(
+            (xnext - xprev)/(2*deltaX),
+            (ynext - yprev)/(2*deltaY),
+            (znext - zprev)/(2*deltaZ));
+        
+        vec3 oldVel = texelFetch(velocityIn, texelPos, 0).xyz;
+        vec3 newVel = oldVel - gradient;
+        newVel = velocityMask*newVel;
+
+        imageStore(velocityOut, texelPos, vec4(newVel, 0.0));
+    }
+}

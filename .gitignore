@@ -1,0 +1,7 @@
+Fluid-Sim/build/*
+Fluid-Sim/.cache/*
+
+Fluid-Sim/.vs/*
+Fluid-Sim/.vscode/settings.json
+
+Fluid-Sim/misc/output/*

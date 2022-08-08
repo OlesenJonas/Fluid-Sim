@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.2)
+include(DefaultLibrary)
+target_link_libraries(intern PRIVATE glfw)
+target_link_libraries(intern PRIVATE glm::glm)
+target_link_libraries(intern PRIVATE glad)
+target_link_libraries(intern PRIVATE ImGui)
+target_link_libraries(intern PRIVATE stb)

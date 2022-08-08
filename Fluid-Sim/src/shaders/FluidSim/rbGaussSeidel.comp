@@ -1,0 +1,71 @@
+//red black gauss seidel iteration for solving the pressure equation
+
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#ifdef GLSLANGVALIDATOR
+    #define FORMAT r16f
+#endif
+
+uniform layout (binding = 0) sampler3D divergence;
+uniform layout(FORMAT, binding = 0) restrict image3D pressure;
+uniform layout(location = 0) uint pass;
+
+void main() 
+{
+    const ivec3 globalInvocation = ivec3(gl_GlobalInvocationID);
+    
+    ivec3 texelPos = globalInvocation;
+    texelPos.z *= 2;
+    ivec3 textureSize = imageSize(pressure);
+    uint checkerboard = texelPos.x & 1U;
+    checkerboard = (checkerboard + texelPos.y) & 1U;
+    texelPos.z += int(checkerboard == pass);
+
+    if(texelPos.x < textureSize.x 
+    && texelPos.y < textureSize.y
+    && texelPos.z < textureSize.z
+    )
+    {
+        //x vector (p)
+        float xprev = imageLoad(pressure, texelPos + ivec3(-1, 0, 0)).x;
+        float xnext = imageLoad(pressure, texelPos + ivec3( 1, 0, 0)).x;
+        float yprev = imageLoad(pressure, texelPos + ivec3( 0,-1, 0)).x;
+        float ynext = imageLoad(pressure, texelPos + ivec3( 0, 1, 0)).x;
+        float zprev = imageLoad(pressure, texelPos + ivec3( 0, 0,-1)).x;
+        float znext = imageLoad(pressure, texelPos + ivec3( 0, 0, 1)).x;
+
+        float center = imageLoad(pressure, texelPos).x;
+
+        //enforce boundary conditions, pressure gradient across border should be 0
+        if(texelPos.x == 0)
+            xprev = center;
+        if(texelPos.x == textureSize.x-1)
+            xnext = center;
+        if(texelPos.y == 0)
+            yprev = center;
+        if(texelPos.y == textureSize.y-1)
+            ynext = center;
+        if(texelPos.z == 0)
+            zprev = center;
+        if(texelPos.z == textureSize.z-1)
+            znext = center;
+
+        //b vector (div(w))
+        float div = texelFetch(divergence, texelPos, 0).x;
+
+        const float deltaXSq = 1.0/(textureSize.x*textureSize.x);
+        const float deltaYSq = 1.0/(textureSize.y*textureSize.y);
+        const float deltaZSq = 1.0/(textureSize.z*textureSize.z);
+
+        //a_ij
+        float diagA = (-2/deltaXSq) + (-2/deltaYSq) + (-2/deltaZSq);
+
+        //x^(k+1)
+        float relaxed = div - xprev/deltaXSq - xnext/deltaXSq - yprev/deltaYSq - ynext/deltaYSq - zprev/deltaZSq - znext/deltaZSq;
+        relaxed *= 1/diagA;
+
+        imageStore(pressure, texelPos, vec4(relaxed));
+    }
+}

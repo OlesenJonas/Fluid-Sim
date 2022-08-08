@@ -1,0 +1,30 @@
+TabWidth: 4
+IndentWidth: 4
+IndentPPDirectives: BeforeHash
+PPIndentWidth: -1
+AlignAfterOpenBracket: AlwaysBreak
+ColumnLimit: 110
+IncludeBlocks: Preserve
+DerivePointerAlignment: false
+PointerAlignment: Left
+BinPackArguments: false
+AllowShortFunctionsOnASingleLine: None
+BreakBeforeBraces: Custom
+FixNamespaceComments: true
+NamespaceIndentation: All
+SortIncludes: true
+IncludeBlocks: Preserve
+AlignAfterOpenBracket: AlwaysBreak
+SpaceBeforeParens: Never
+AlwaysBreakTemplateDeclarations: Yes
+AllowShortLambdasOnASingleLine: Empty
+BraceWrapping:
+    AfterNamespace: true
+    AfterStruct:    true
+    AfterClass:      true
+    AfterControlStatement: true
+    AfterEnum:       true
+    BeforeWhile:    true
+    AfterFunction:   true
+    BeforeElse:      true
+    BeforeLambdaBody: true

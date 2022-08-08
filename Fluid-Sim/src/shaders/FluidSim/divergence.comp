@@ -1,0 +1,72 @@
+//divergence shader
+
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#ifndef FORMAT
+    #define FORMAT r16f
+#endif
+
+uniform layout (binding = 0) sampler3D velocity;
+uniform layout(FORMAT, binding = 0) writeonly restrict image3D divergence;
+
+void main() 
+{
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID);
+    ivec3 textureSize = imageSize(divergence);
+    if(texelPos.x < textureSize.x 
+    && texelPos.y < textureSize.y 
+    && texelPos.z < textureSize.z
+    )
+    {
+        // vec2 uvw = (vec2(texelPos)+0.5)/vec2(textureSize);
+        //todo: dont sample .xyz, take only component needed for divergence
+
+        //axis - previous/next
+        vec3 xprev = texelFetchOffset(velocity, texelPos, 0, ivec3(-1, 0, 0)).xyz;
+        vec3 xnext = texelFetchOffset(velocity, texelPos, 0, ivec3( 1, 0, 0)).xyz;
+        vec3 yprev = texelFetchOffset(velocity, texelPos, 0, ivec3( 0,-1, 0)).xyz;
+        vec3 ynext = texelFetchOffset(velocity, texelPos, 0, ivec3( 0, 1, 0)).xyz;
+        vec3 zprev = texelFetchOffset(velocity, texelPos, 0, ivec3( 0, 0,-1)).xyz;
+        vec3 znext = texelFetchOffset(velocity, texelPos, 0, ivec3( 0, 0, 1)).xyz;
+
+        //force boundary velocities to 0
+        if(texelPos.x == 0)
+        {
+            xprev = vec3(0.0);
+        }
+        if(texelPos.x == textureSize.x-1)
+        {
+            xnext = vec3(0.0);
+        }
+        if(texelPos.y == 0)
+        {
+            yprev = vec3(0.0);
+        }
+        if(texelPos.y == textureSize.y-1)
+        {
+            ynext = vec3(0.0);
+        }
+        if(texelPos.z == 0)
+        {
+            zprev = vec3(0.0);
+        }
+        if(texelPos.z == textureSize.z-1)
+        {
+            znext = vec3(0.0);
+        }
+
+        const float deltaX = 1.0/textureSize.x;
+        const float deltaY = 1.0/textureSize.y;
+        const float deltaZ = 1.0/textureSize.z;
+
+        const float partialXX = (xnext.x - xprev.x)/(2*deltaX);
+        const float partialYY = (ynext.y - yprev.y)/(2*deltaY);
+        const float partialZZ = (znext.z - zprev.z)/(2*deltaZ);
+
+        float div = (partialXX + partialYY + partialZZ);
+
+        imageStore(divergence, texelPos, vec4(div));
+    }
+}

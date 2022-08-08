@@ -1,0 +1,120 @@
+//vector BFECC step2 shader
+
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#ifdef GLSLANGVALIDATOR
+    #define FORMAT rgba16f
+#endif
+
+uniform layout (binding = 0) sampler3D velocity;
+uniform layout (binding = 1) sampler3D phiNTex;
+uniform layout (binding = 2) sampler3D phiTilde2Tex;
+uniform layout(FORMAT, binding = 0) writeonly restrict image3D phiNp1Tex;
+
+layout (std140, binding = 10) uniform timeData
+{
+    float deltaTime;
+};
+
+layout (std140, binding = 11) uniform advectData
+{
+    int mode;
+    int limiter;
+    int pad1;
+    int pad2;
+};
+
+layout(location = 0) uniform float factor;
+
+#define LIMITER_NONE 0
+#define LIMITER_CLAMP 1
+#define LIMITER_REVERT 2
+
+void main() 
+{
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID);
+    ivec3 textureSize = imageSize(phiNp1Tex);
+    if(texelPos.x < textureSize.x 
+    && texelPos.y < textureSize.y
+    && texelPos.z < textureSize.z
+    )
+    {
+
+        vec3 uvw = (vec3(texelPos)+0.5)/vec3(textureSize);
+
+        const float dt = deltaTime;
+        const vec3 p0 = uvw;
+        const vec3 v0 = textureLod(velocity, p0, 0).xyz;
+        vec3 pos;
+        if(mode == 0)
+        {
+            // Euler
+            pos = uvw - dt * v0;
+        }
+        else
+        {
+            // RK4
+            const vec3 p1 = p0 - dt*0.5*v0;
+            const vec3 v1 = textureLod(velocity, p1, 0).xyz;
+            const vec3 p2 = p0 - dt*0.5*v1;
+            const vec3 v2 = textureLod(velocity, p2, 0).xyz;
+            const vec3 p3 = p0 - v2*dt;
+            const vec3 v3 = textureLod(velocity, p3, 0).xyz;
+            const vec3 v = (v0 + 2*v1 + 2*v2 + v3)/6.0;
+            pos = uvw - dt * v;
+        }
+        
+        const vec3 phiNAdvected = textureLod(phiNTex, pos, 0).xyz;
+        vec3 phiTilde2Advected = textureLod(phiTilde2Tex, pos, 0).xyz;
+
+        const bool closeToBorder =   texelPos.x < 3 || texelPos.x > textureSize.x-4
+                            || texelPos.y < 3 || texelPos.y > textureSize.y-4
+                            || texelPos.z < 3 || texelPos.z > textureSize.z-4;
+
+        if( limiter != LIMITER_NONE) 
+        {
+            //sample neighbourhood around pos of phiN and use that to restrict the
+            //result of advecting phiTilde
+            ivec3 floorPos = ivec3(floor(pos*textureSize-0.5));
+            vec3 ref1 = texelFetchOffset(phiNTex, floorPos, 0, ivec3( 0, 0, 0)).xyz;
+            #define MINMAX(x) minValue=min(minValue,x);maxValue=max(maxValue,x);
+            vec3 minValue = ref1;
+            vec3 maxValue = ref1;
+            vec3 ref2 = texelFetchOffset(phiNTex, floorPos, 0, ivec3( 0, 1, 0)).xyz;
+            MINMAX(ref2);
+            vec3 ref3 = texelFetchOffset(phiNTex, floorPos, 0, ivec3( 1, 0, 0)).xyz;
+            MINMAX(ref3);
+            vec3 ref4 = texelFetchOffset(phiNTex, floorPos, 0, ivec3( 1, 1, 0)).xyz;
+            MINMAX(ref4);
+            vec3 ref5 = texelFetchOffset(phiNTex, floorPos, 0, ivec3( 0, 0, 1)).xyz;
+            MINMAX(ref5);
+            vec3 ref6 = texelFetchOffset(phiNTex, floorPos, 0, ivec3( 0, 1, 1)).xyz;
+            MINMAX(ref6);
+            vec3 ref7 = texelFetchOffset(phiNTex, floorPos, 0, ivec3( 1, 0, 1)).xyz;
+            MINMAX(ref7);
+            vec3 ref8 = texelFetchOffset(phiNTex, floorPos, 0, ivec3( 1, 1, 1)).xyz;
+            MINMAX(ref8);
+            #undef MINMAX
+            if(limiter == LIMITER_CLAMP)
+            {
+                //clamp limiter just limits phiTilde to the given range of values
+                phiTilde2Advected = clamp(phiTilde2Advected, minValue, maxValue);
+            }
+            else
+            {
+                //revert limiter reverts phiTilde back to phiN if it lies outside the given range
+                //todo: not sure if difference between doing this per component or overall
+                if(phiTilde2Advected.x < minValue.x || phiTilde2Advected.x > maxValue.x){phiTilde2Advected.x = phiNAdvected.x;}
+                if(phiTilde2Advected.y < minValue.y || phiTilde2Advected.y > maxValue.y){phiTilde2Advected.y = phiNAdvected.y;}
+                if(phiTilde2Advected.z < minValue.z || phiTilde2Advected.z > maxValue.z){phiTilde2Advected.z = phiNAdvected.z;}
+            }
+        }
+        //revert to using single forward step of phiN if close to border
+        vec3 phiNp1 = closeToBorder ? phiNAdvected : phiTilde2Advected;
+        phiNp1 *= factor;
+
+        imageStore(phiNp1Tex, texelPos, vec4(phiNp1,1.0));
+    }
+}
