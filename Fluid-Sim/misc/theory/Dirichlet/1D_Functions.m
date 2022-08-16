@@ -28,6 +28,8 @@ endfunction
 
 function u2h = restrict(uh)
   u2h = zeros(1, (columns(uh)-1)/2 +1);
+  u2h(1) = uh(1);
+  u2h(columns(u2h)) = uh(columns(uh));
   for i = 2:columns(u2h)-1
     u2h(i) = 0.25 * uh( (i-1)*2 ) + 0.5 * uh( (i-1)*2 + 1) + 0.25 * uh( (i-1)*2 + 2 );
   endfor
@@ -35,10 +37,10 @@ endfunction
 
 function uh = interpolate(u2h)
   uh = zeros(1, (columns(u2h)-1)*2 +1);
-  for i = 2:2:columns(uh)-1
+  for i = 2:2:columns(uh)
     uh(i) = 0.5 * u2h(i/2) + 0.5 * u2h(i/2 + 1);
   endfor
-  for i = 3:2:columns(uh)-1
+  for i = 1:2:columns(uh)
     uh(i) = u2h( (i+1)/2 );
   endfor
 endfunction
