@@ -1,5 +1,5 @@
 clear -f
-source "2D_Functions.m"
+source "2D_Functions_centered.m"
 
 % solve Au = f where A is -laplacian
 % (Poisson Equation)
@@ -10,13 +10,13 @@ source "2D_Functions.m"
 n = 8
 
 % values are stored at start and end of each segment (thats why total size is +1)
-f = zeros(n+1, n+1);
+f = zeros(n, n);
 % using this as a specific example since I know this has a solution!
 % with neumann BC theres no guarantee that a solution exists in general!!!
-for i=1:n+1
-  for j=1:n+1
-    x = (j-1)/n;
-    y = (i-1)/n;
+for i=1:n
+  for j=1:n
+    x = (j-0.5)/n;
+    y = (i-0.5)/n;
     f(i,j) = 2*x*y*y - y*y + y - 2*x*y + 2*y*x*x - 2*y*x + x - x*x;
   endfor
 endfor
@@ -43,7 +43,7 @@ if( recalc )
 endif
 
 % initial guess for uh
-uh = zeros(n+1, n+1);
+uh = zeros(n, n);
 
 for i = 10:10:100
     approx = iterateJacobi(uh, f, i, 1e-10);
@@ -58,7 +58,7 @@ for i = 5:5:15
   printf("Pre and Post smoothing iterations: %d\n", i);
 
   % initial guess for uh
-  uh = zeros(n+1, n+1);
+  uh = zeros(n, n);
 
   uh = iterateJacobi(uh, f, i, 1e-10);
 
