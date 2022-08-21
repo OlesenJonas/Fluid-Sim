@@ -20,6 +20,10 @@ class Texture3D : public GLTexture
     Texture3D(const Texture3D&) = delete;            // copy constr
     Texture3D& operator=(const Texture3D&) = delete; // copy assign
 
+    /** Need default ctor for some containers, leaves all members in uninitialized state
+     */
+    Texture3D() = default;
+
     /** Creates an immutable Texture object based on a given descriptor.
      * @param descriptor Descriptor to use for configuring the texture
      */

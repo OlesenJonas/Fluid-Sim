@@ -69,6 +69,7 @@ Texture3D& Texture3D::operator=(Texture3D&& other) noexcept
 
 Texture3D::~Texture3D()
 {
+    // todo: this shouldnt call glDelete, GLTexture's dtor should do that
     if(initialized)
     {
         glDeleteTextures(1, &textureID);

@@ -12,10 +12,10 @@
 struct TextureDesc
 {
     const char* name = "";
-    GLsizei levels = 1;
     GLsizei width = -1;
     GLsizei height = -1;
     GLsizei depth = -1;
+    GLsizei levels = 1;
     GLenum internalFormat = 0xFFFFFFFF;
     GLint minFilter = GL_LINEAR;
     GLint magFilter = GL_LINEAR;
