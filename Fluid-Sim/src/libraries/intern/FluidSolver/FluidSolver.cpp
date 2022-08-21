@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 
 #include <cstddef>
+#include <format>
 
 #include <intern/Computepass/Computepass.h>
 #include <intern/FluidSolver/FluidSolver.h>
@@ -484,6 +485,51 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .textureBindings = {{.unit = 0, .texture = &velocityTex0}}})
 
 {
+    // not allocating these as 1 texture with multiple mips since then .swap() would swap all levels
+    // (since that just swaps the internal OGL object) which I dont want that to happen
+    // for now just assume sizes are all POT
+    int levels = int(log2(std::max(width, std::max(depth, height)))) + 1;
+    divergenceTextures.reserve(levels);
+    pressureTextures0.reserve(levels);
+    pressureTextures1.reserve(levels);
+
+    for(int i = 0; i < levels; i++)
+    {
+        int levelWidth = width / (1 << i);
+        int levelHeight = height / (1 << i);
+        int levelDepth = depth / (1 << i);
+        divergenceTextures.emplace_back(TextureDesc{
+            .name = std::format("divergenceTexLevel{}", i).c_str(),
+            .width = width,
+            .height = height,
+            .depth = depth,
+            .internalFormat = scalarInternalFormat,
+            .wrapS = GL_CLAMP_TO_EDGE,
+            .wrapT = GL_CLAMP_TO_EDGE,
+            .wrapR = GL_CLAMP_TO_EDGE,
+        });
+        divergenceTextures.emplace_back(TextureDesc{
+            .name = std::format("divergenceTexLevel{}", i).c_str(),
+            .width = width,
+            .height = height,
+            .depth = depth,
+            .internalFormat = scalarInternalFormat,
+            .wrapS = GL_CLAMP_TO_EDGE,
+            .wrapT = GL_CLAMP_TO_EDGE,
+            .wrapR = GL_CLAMP_TO_EDGE,
+        });
+        divergenceTextures.emplace_back(TextureDesc{
+            .name = std::format("divergenceTexLevel{}", i).c_str(),
+            .width = width,
+            .height = height,
+            .depth = depth,
+            .internalFormat = scalarInternalFormat,
+            .wrapS = GL_CLAMP_TO_EDGE,
+            .wrapT = GL_CLAMP_TO_EDGE,
+            .wrapR = GL_CLAMP_TO_EDGE,
+        });
+    }
+
     // not part of compute bindinds since these calls need to be made only once
     //(total amount of buffers is low enough that no binding point has to be reused)
 

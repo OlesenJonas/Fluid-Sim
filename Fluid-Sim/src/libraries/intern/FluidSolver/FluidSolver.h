@@ -2,6 +2,8 @@
 
 #include <glad/glad/glad.h>
 
+#include <vector>
+
 #include <intern/Computepass/Computepass.h>
 #include <intern/Context/Context.h>
 #include <intern/Misc/GPUTimer.h>
@@ -154,7 +156,7 @@ class FluidSolver
     ShaderProgram divergenceRemainderShader;
 
     // todo: optimize, re-use textures for different passes
-    //       use aliases to keep names for readability
+    //       use references to keep names for readability
     Texture3D velocityTex0;
     Texture3D velocityTex1;
     Texture3D vectorPhiTildeTex;
@@ -165,9 +167,9 @@ class FluidSolver
     Texture3D temperatureTex1;
     Texture3D scalarPhiTildeTex;
     Texture3D scalarPhiTilde2Tex;
-    Texture3D divergenceTex;
-    Texture3D pressureTex0;
-    Texture3D pressureTex1;
+    std::vector<Texture3D> divergenceTextures;
+    std::vector<Texture3D> pressureTextures0;
+    std::vector<Texture3D> pressureTextures1;
 
     const Computepass advectVelocitySimplePass;
     const Computepass advectVelocityBFECCPass1;
