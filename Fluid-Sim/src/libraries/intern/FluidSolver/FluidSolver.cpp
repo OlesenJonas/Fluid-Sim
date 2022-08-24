@@ -14,6 +14,7 @@
 
 FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei depth, Precision precision)
     : ctx(ctx), width(width), height(height), depth(depth),
+      levels(int(log2(std::max(width, std::max(depth, height)))) + 1),
       scalarInternalFormat(precision == Precision::Half ? GL_R16F : GL_R32F),
       vectorInternalFormat(precision == Precision::Half ? GL_RGBA16F : GL_RGBA32F),
       scalarShaderFormat(precision == Precision::Half ? "r16f" : "r32f"),
@@ -50,6 +51,12 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
       gaussSeidelShader(
           COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/rbGaussSeidel.comp"},
           {{"FORMAT", scalarShaderFormat}}),
+      residualShader(
+          COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/calcResidual.comp"}, {{"FORMAT", scalarShaderFormat}}),
+      restrictShader(
+          COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/restrict.comp"}, {{"FORMAT", scalarShaderFormat}}),
+      correctShader(
+          COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/correct.comp"}, {{"FORMAT", scalarShaderFormat}}),
       pressureSubShader(
           COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/subPressureGrad.comp"},
           {{"FORMAT", vectorShaderFormat}}),
@@ -156,36 +163,8 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .wrapT = GL_CLAMP_TO_EDGE,
           .wrapR = GL_CLAMP_TO_EDGE,
       }),
-      divergenceTex({
-          .name = "divergenceTex",
-          .width = width,
-          .height = height,
-          .depth = depth,
-          .internalFormat = scalarInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
-      }),
-      pressureTex0({
-          .name = "pressureTex0",
-          .width = width,
-          .height = height,
-          .depth = depth,
-          .internalFormat = scalarInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
-      }),
-      pressureTex1({
-          .name = "pressureTex1",
-          .width = width,
-          .height = height,
-          .depth = depth,
-          .internalFormat = scalarInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
-      }),
+
+      divergenceTextures(levels), pressureTextures0(levels), pressureTextures1(levels),
 
       advectVelocitySimplePass(ComputepassDesc{
           .name = "Advect Velocity Simple",
@@ -453,7 +432,7 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .textureBindings = {{.unit = 0, .texture = &velocityTex0}},
           .imageBindings =
               {{.unit = 0,
-                .texture = &divergenceTex,
+                .texture = &divergenceTextures[0],
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = scalarInternalFormat}}}),
@@ -466,7 +445,7 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &pressureTex0}, //
+              {{.unit = 0, .texture = &pressureTextures0[0]}, //
                {.unit = 1, .texture = &velocityTex0}},
           .imageBindings =
               {{.unit = 0,
@@ -487,47 +466,45 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
 {
     // not allocating these as 1 texture with multiple mips since then .swap() would swap all levels
     // (since that just swaps the internal OGL object) which I dont want that to happen
+    // also in future with different grids I want mips of size n*2 + 1, so cant use default mips
+
     // for now just assume sizes are all POT
-    int levels = int(log2(std::max(width, std::max(depth, height)))) + 1;
-    divergenceTextures.reserve(levels);
-    pressureTextures0.reserve(levels);
-    pressureTextures1.reserve(levels);
 
     for(int i = 0; i < levels; i++)
     {
-        int levelWidth = width / (1 << i);
-        int levelHeight = height / (1 << i);
-        int levelDepth = depth / (1 << i);
-        divergenceTextures.emplace_back(TextureDesc{
+        int levelWidth = std::max(width / (1 << i), 1);
+        int levelHeight = std::max(height / (1 << i), 1);
+        int levelDepth = std::max(depth / (1 << i), 1);
+        divergenceTextures[i] = Texture3D{{
             .name = std::format("divergenceTexLevel{}", i).c_str(),
-            .width = width,
-            .height = height,
-            .depth = depth,
+            .width = levelWidth,
+            .height = levelHeight,
+            .depth = levelDepth,
             .internalFormat = scalarInternalFormat,
             .wrapS = GL_CLAMP_TO_EDGE,
             .wrapT = GL_CLAMP_TO_EDGE,
             .wrapR = GL_CLAMP_TO_EDGE,
-        });
-        divergenceTextures.emplace_back(TextureDesc{
-            .name = std::format("divergenceTexLevel{}", i).c_str(),
-            .width = width,
-            .height = height,
-            .depth = depth,
+        }};
+        pressureTextures0[i] = Texture3D{{
+            .name = std::format("pressureTex0Level{}", i).c_str(),
+            .width = levelWidth,
+            .height = levelHeight,
+            .depth = levelDepth,
             .internalFormat = scalarInternalFormat,
             .wrapS = GL_CLAMP_TO_EDGE,
             .wrapT = GL_CLAMP_TO_EDGE,
             .wrapR = GL_CLAMP_TO_EDGE,
-        });
-        divergenceTextures.emplace_back(TextureDesc{
-            .name = std::format("divergenceTexLevel{}", i).c_str(),
-            .width = width,
-            .height = height,
-            .depth = depth,
+        }};
+        pressureTextures1[i] = Texture3D{{
+            .name = std::format("pressureTex1Level{}", i).c_str(),
+            .width = levelWidth,
+            .height = levelHeight,
+            .depth = levelDepth,
             .internalFormat = scalarInternalFormat,
             .wrapS = GL_CLAMP_TO_EDGE,
             .wrapT = GL_CLAMP_TO_EDGE,
             .wrapR = GL_CLAMP_TO_EDGE,
-        });
+        }};
     }
 
     // not part of compute bindinds since these calls need to be made only once
@@ -545,9 +522,9 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
     glBindBufferBase(GL_UNIFORM_BUFFER, 11, advectionSettingsUBO);
 
     glCreateBuffers(2, &divergenceSSBOs[0]);
-    glNamedBufferStorage(divergenceSSBOs[0], sizeof(GLfloat), nullptr, 0);
+    glNamedBufferStorage(divergenceSSBOs[0], 4 * sizeof(GLfloat), nullptr, 0);
     glObjectLabel(GL_BUFFER, divergenceSSBOs[0], -1, "Remaining Divergence SSBO0");
-    glNamedBufferStorage(divergenceSSBOs[1], sizeof(GLfloat), nullptr, 0);
+    glNamedBufferStorage(divergenceSSBOs[1], 4 * sizeof(GLfloat), nullptr, 0);
     glObjectLabel(GL_BUFFER, divergenceSSBOs[1], -1, "Remaining Divergence SSBO1");
     GLfloat zero = 0;
     glClearNamedBufferData(divergenceSSBOs[0], GL_R32F, GL_RED, GL_FLOAT, &zero);
@@ -570,9 +547,12 @@ void FluidSolver::clear()
     glClearTexImage(temperatureTex1.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
     glClearTexImage(scalarPhiTildeTex.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
     glClearTexImage(scalarPhiTilde2Tex.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-    glClearTexImage(divergenceTex.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-    glClearTexImage(pressureTex0.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-    glClearTexImage(pressureTex1.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+    for(int i = 0; i < levels; i++)
+    {
+        glClearTexImage(divergenceTextures[i].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+        glClearTexImage(pressureTextures0[i].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+        glClearTexImage(pressureTextures1[i].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+    }
 }
 
 void FluidSolver::update()
@@ -710,32 +690,32 @@ void FluidSolver::update()
     if(!settings.useLastFrameAsInitialGuess)
     {
         const glm::vec4 clear = glm::vec4(0.0f);
-        glClearTexImage(pressureTex0.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+        glClearTexImage(pressureTextures0[0].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
     }
-    if(settings.solverMode == 0)
+    if(settings.solverMode == PressureSolver::Jacobi)
     {
         glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Jacobi");
         jacobiShader.useProgram();
-        glBindTextureUnit(1, divergenceTex.getTextureID());
+        glBindTextureUnit(1, divergenceTextures[0].getTextureID());
         for(decltype(settings.iterations) i = 0; i < settings.iterations; i++)
         {
+            glBindTextureUnit(0, pressureTextures0[0].getTextureID());
             glBindImageTexture(
-                0, pressureTex1.getTextureID(), 0, GL_TRUE, 0, GL_WRITE_ONLY, scalarInternalFormat);
-            glBindTextureUnit(0, pressureTex0.getTextureID());
+                0, pressureTextures1[0].getTextureID(), 0, GL_TRUE, 0, GL_WRITE_ONLY, scalarInternalFormat);
             glDispatchCompute(
                 UintDivAndCeil(width, 16), UintDivAndCeil(height, 16), static_cast<uint32_t>(depth));
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-            pressureTex0.swap(pressureTex1);
+            pressureTextures0[0].swap(pressureTextures1[0]);
         }
         glPopDebugGroup();
     }
-    else if(settings.solverMode == 1)
+    else if(settings.solverMode == PressureSolver::RBGaussSeidel)
     {
         glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Gauss Seidel");
         gaussSeidelShader.useProgram();
+        glBindTextureUnit(0, divergenceTextures[0].getTextureID());
         glBindImageTexture(
-            0, pressureTex0.getTextureID(), 0, GL_TRUE, 0, GL_READ_WRITE, scalarInternalFormat);
-        glBindTextureUnit(0, divergenceTex.getTextureID());
+            0, pressureTextures0[0].getTextureID(), 0, GL_TRUE, 0, GL_READ_WRITE, scalarInternalFormat);
         for(decltype(settings.iterations) i = 0; i < settings.iterations; i += 2)
         {
             glUniform1ui(0, 0U); // Location specified in shader
@@ -753,6 +733,133 @@ void FluidSolver::update()
         glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
         glPopDebugGroup();
     }
+    else if(settings.solverMode == PressureSolver::Multigrid)
+    {
+        glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Multigrid");
+
+        //  V Cycle
+        //  Downwards
+        for(int level = 0; level < settings.mgLevels; level++)
+        {
+            jacobiShader.useProgram();
+            glBindTextureUnit(1, divergenceTextures[level].getTextureID());
+            for(decltype(settings.mgPrePostSmoothIterations) i = 0; i < settings.mgPrePostSmoothIterations;
+                i++)
+            {
+                glBindTextureUnit(0, pressureTextures0[level].getTextureID());
+                glBindImageTexture(
+                    0,
+                    pressureTextures1[level].getTextureID(),
+                    0,
+                    GL_TRUE,
+                    0,
+                    GL_WRITE_ONLY,
+                    scalarInternalFormat);
+                glDispatchCompute(
+                    UintDivAndCeil(pressureTextures0[level].getDepth(), 16),
+                    UintDivAndCeil(pressureTextures0[level].getHeight(), 16),
+                    static_cast<uint32_t>(pressureTextures0[level].getDepth()));
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+                pressureTextures0[level].swap(pressureTextures1[level]);
+            }
+            //"final" pressure is now in pressureTextures0[level]
+
+            // restrict if not on final level
+            if(level < settings.mgLevels - 1)
+            {
+                // write current level residual into pressureTextures1
+                residualShader.useProgram();
+                glBindTextureUnit(0, pressureTextures0[level].getTextureID());
+                glBindTextureUnit(1, divergenceTextures[level].getTextureID());
+                glBindImageTexture(
+                    0,
+                    pressureTextures1[level].getTextureID(),
+                    0,
+                    GL_TRUE,
+                    0,
+                    GL_WRITE_ONLY,
+                    scalarInternalFormat);
+                glDispatchCompute(
+                    UintDivAndCeil(pressureTextures1[level].getDepth(), 16),
+                    UintDivAndCeil(pressureTextures1[level].getHeight(), 16),
+                    static_cast<uint32_t>(pressureTextures0[level].getDepth()));
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+                // restrict from pressureTextures1 into divergenceTextures
+                restrictShader.useProgram();
+                glBindTextureUnit(0, pressureTextures1[level].getTextureID());
+                glBindImageTexture(
+                    0,
+                    divergenceTextures[level + 1].getTextureID(),
+                    0,
+                    GL_TRUE,
+                    0,
+                    GL_WRITE_ONLY,
+                    scalarInternalFormat);
+                glDispatchCompute(
+                    UintDivAndCeil(divergenceTextures[level + 1].getDepth(), 16),
+                    UintDivAndCeil(divergenceTextures[level + 1].getHeight(), 16),
+                    static_cast<uint32_t>(divergenceTextures[level + 1].getDepth()));
+
+                // clear new levels initial pressure texture
+                const glm::vec4 clear = glm::vec4(0.0f);
+                glClearTexImage(pressureTextures0[level + 1].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+            }
+        }
+        //  Upwards
+        for(int level = settings.mgLevels - 1; level >= 0; level--)
+        {
+            jacobiShader.useProgram();
+            glBindTextureUnit(1, divergenceTextures[level].getTextureID());
+            for(decltype(settings.mgPrePostSmoothIterations) i = 0; i < settings.mgPrePostSmoothIterations;
+                i++)
+            {
+                glBindTextureUnit(0, pressureTextures0[level].getTextureID());
+                glBindImageTexture(
+                    0,
+                    pressureTextures1[level].getTextureID(),
+                    0,
+                    GL_TRUE,
+                    0,
+                    GL_WRITE_ONLY,
+                    scalarInternalFormat);
+                glDispatchCompute(
+                    UintDivAndCeil(pressureTextures0[level].getDepth(), 16),
+                    UintDivAndCeil(pressureTextures0[level].getHeight(), 16),
+                    static_cast<uint32_t>(pressureTextures0[level].getDepth()));
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+                pressureTextures0[level].swap(pressureTextures1[level]);
+            }
+            //"final" guess is now in pressureTextures0[level]
+
+            // interpolate and correct if not on 0th level
+            if(level > 0)
+            {
+                // currently interpolation and correction can easily be done in one step since
+                // interpolation just takes nearest neighbour
+
+                correctShader.useProgram();
+                glBindTextureUnit(0, pressureTextures0[level - 1].getTextureID());
+                glBindTextureUnit(1, pressureTextures0[level].getTextureID());
+                glBindImageTexture(
+                    0,
+                    pressureTextures1[level - 1].getTextureID(),
+                    0,
+                    GL_TRUE,
+                    0,
+                    GL_WRITE_ONLY,
+                    scalarInternalFormat);
+                glDispatchCompute(
+                    UintDivAndCeil(pressureTextures1[level - 1].getDepth(), 16),
+                    UintDivAndCeil(pressureTextures1[level - 1].getHeight(), 16),
+                    static_cast<uint32_t>(pressureTextures0[level - 1].getDepth()));
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+                pressureTextures0[level - 1].swap(pressureTextures1[level - 1]);
+            }
+        }
+
+        glPopDebugGroup();
+    }
     glPopDebugGroup();
     componentTimers[PressureSolve].end();
 
@@ -767,9 +874,12 @@ void FluidSolver::update()
         GLfloat zero = 0;
         glClearNamedBufferData(divergenceSSBOs[frontBufferIndex], GL_R32F, GL_RED, GL_FLOAT, &zero);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, divergenceSSBOs[frontBufferIndex]);
+        glBindTextureUnit(0, velocityTex0.getTextureID());
+        glBindTextureUnit(1, divergenceTextures[0].getTextureID());
         divergenceRemainderPass.execute();
         // todo: make more efficient, but low prio since not necessary for solver
-        glGetNamedBufferSubData(divergenceSSBOs[backBufferIndex], 0, sizeof(GLfloat), &remainingDivergence);
+        glGetNamedBufferSubData(
+            divergenceSSBOs[backBufferIndex], 0, 4 * sizeof(GLfloat), &remainingDivergence);
         componentTimers[DivergenceRemainder].end();
     }
 
@@ -788,9 +898,8 @@ void FluidSolver::updateSettingsBuffer()
     glNamedBufferSubData(timeVarsUBO, 0, sizeof(AdvectSettings), &settings.advectSettings);
 }
 
-float FluidSolver::getRemainingDivergence() const
+FluidSolver::RemainingDivergence FluidSolver::getRemainingDivergence() const
 {
-    // return static_cast<float>(remainingDivergence) / 65536.0f;
     return remainingDivergence;
 }
 

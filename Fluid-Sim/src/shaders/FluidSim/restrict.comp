@@ -1,0 +1,41 @@
+//restrict residual to half res in each axis
+//todo: handle case where axis have different sizes, eg: resolution is 1x4x4 -> only need to restrict further in Y and Z
+
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#ifndef FORMAT
+    #define FORMAT r16f
+#endif
+
+uniform layout (binding = 0) sampler3D rh;
+uniform layout(FORMAT, binding = 0) writeonly restrict image3D r2h;
+
+const float alpha = -1.0;
+const float beta = 6.0;
+
+void main() 
+{
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID);
+    ivec3 textureSize = imageSize(r2h);
+
+    if(texelPos.x < textureSize.x 
+    && texelPos.y < textureSize.y
+    && texelPos.z < textureSize.z
+    )
+    {
+        //cell centered restriction, merge 8 texels -> 1
+        float average = texelFetchOffset(rh, 2*texelPos, 0, ivec3(0, 0, 0)).x;
+        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(0, 0, 1)).x;
+        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(0, 1, 0)).x;
+        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(0, 1, 1)).x;
+        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(1, 0, 0)).x;
+        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(1, 0, 1)).x;
+        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(1, 1, 0)).x;
+        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(1, 1, 1)).x;
+        average /= 8.0;
+
+        imageStore(r2h, texelPos, vec4(average));
+    }
+}

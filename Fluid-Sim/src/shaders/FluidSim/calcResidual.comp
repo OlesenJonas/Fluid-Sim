@@ -1,0 +1,66 @@
+//calculate the residual on the current level
+
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#ifndef FORMAT
+    #define FORMAT r16f
+#endif
+
+uniform layout (binding = 0) sampler3D currentGuess;
+uniform layout (binding = 1) sampler3D rightHandSide;
+
+uniform layout(FORMAT, binding = 0) writeonly restrict image3D residualTex;
+
+void main() 
+{
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID);
+    ivec3 textureSize = imageSize(residualTex);
+
+    if(texelPos.x < textureSize.x 
+    && texelPos.y < textureSize.y
+    && texelPos.z < textureSize.z
+    )
+    {
+        // calculate laplace of current guess (Ax')
+        float xprev = texelFetchOffset(currentGuess, texelPos, 0, ivec3(-1, 0, 0)).x;
+        float xnext = texelFetchOffset(currentGuess, texelPos, 0, ivec3( 1, 0, 0)).x;
+        float yprev = texelFetchOffset(currentGuess, texelPos, 0, ivec3( 0,-1, 0)).x;
+        float ynext = texelFetchOffset(currentGuess, texelPos, 0, ivec3( 0, 1, 0)).x;
+        float zprev = texelFetchOffset(currentGuess, texelPos, 0, ivec3( 0, 0,-1)).x;
+        float znext = texelFetchOffset(currentGuess, texelPos, 0, ivec3( 0, 0, 1)).x;
+        float center = texelFetch(currentGuess, texelPos, 0).x;
+
+        //enforce boundary conditions, gradient across border should be 0
+        //values are cell centered
+        if(texelPos.x == 0)
+            xprev = center;
+        if(texelPos.x == textureSize.x-1)
+            xnext = center;
+        if(texelPos.y == 0)
+            yprev = center;
+        if(texelPos.y == textureSize.y-1)
+            ynext = center;
+        if(texelPos.z == 0)
+            zprev = center;
+        if(texelPos.z == textureSize.z-1)
+            znext = center;
+
+        const float deltaXSq = 1.0/(textureSize.x*textureSize.x);
+        const float deltaYSq = 1.0/(textureSize.y*textureSize.y);
+        const float deltaZSq = 1.0/(textureSize.z*textureSize.z);
+
+        float laplace = (xprev - 2*center + xnext)/deltaXSq;
+        laplace      += (yprev - 2*center + ynext)/deltaYSq;
+        laplace      += (zprev - 2*center + znext)/deltaZSq;
+
+        //RHS (b)
+        float rhs = texelFetch(rightHandSide, texelPos, 0).x;
+
+        //residual (b - Ax')
+        float residual = rhs - laplace;
+
+        imageStore(residualTex, texelPos, vec4(residual));
+    }
+}

@@ -79,6 +79,12 @@ class FluidSolver
         // renderdoc complains if ubo binding < 16 bytes
         uint32_t misc[2] = {}; // NOLINT
     };
+    enum PressureSolver : int
+    {
+        Jacobi = 0,
+        RBGaussSeidel = 1,
+        Multigrid = 2,
+    };
     struct Settings
     {
         //---
@@ -88,11 +94,13 @@ class FluidSolver
         bool useBFECCVelocity = true;
         float temperatureDissipation = 0.0f;
         float densityDissipation = 0.005f;
-        float velocityDissipation = 0.0f;
+        float velocityDissipation = 0.005f;
         // ---
         bool useLastFrameAsInitialGuess = false;
-        int solverMode = 0; // Jacobi, RB Gauss-Seidel, Multigrid(?)
+        PressureSolver solverMode = PressureSolver::Jacobi;
         uint16_t iterations = 40;
+        uint16_t mgPrePostSmoothIterations = 10;
+        uint16_t mgLevels = 2;
         bool calculateRemainingDivergence = false;
     };
 
@@ -112,7 +120,14 @@ class FluidSolver
 
     void updateSettingsBuffer();
 
-    [[nodiscard]] float getRemainingDivergence() const;
+    struct RemainingDivergence
+    {
+        float totalDivBefore;
+        float totalDivBeforeInner;
+        float totalDivAfter;
+        float totalDivAfterInner;
+    };
+    [[nodiscard]] RemainingDivergence getRemainingDivergence() const;
 
     void setTransform(glm::mat4 mat);
 
@@ -128,12 +143,18 @@ class FluidSolver
 
     void setImpulse(struct Impulse imp);
 
+    inline int getLevels() const
+    {
+        return levels;
+    }
+
   private:
     Context& ctx;
 
     const GLsizei width = -1;
     const GLsizei height = -1;
     const GLsizei depth = -1;
+    int levels = -1;
 
     // if more than just these few are needed do constexpr LUT
     const GLenum scalarInternalFormat = GL_R16F;
@@ -152,6 +173,9 @@ class FluidSolver
     ShaderProgram divergenceShader;
     ShaderProgram jacobiShader;
     ShaderProgram gaussSeidelShader;
+    ShaderProgram residualShader;
+    ShaderProgram restrictShader;
+    ShaderProgram correctShader;
     ShaderProgram pressureSubShader;
     ShaderProgram divergenceRemainderShader;
 
@@ -206,7 +230,7 @@ class FluidSolver
     GLuint advectionSettingsUBO = 0xFFFFFFFF;
     GLuint timeVarsUBO = 0xFFFFFFFF;
     GLuint divergenceSSBOs[2] = {0xFFFFFFFF, 0xFFFFFFFF}; // NOLINT
-    float remainingDivergence = 0;
+    RemainingDivergence remainingDivergence{};
 
     GPUTimer<128> timer;
     std::array<GPUTimer<128>, Timer::count> componentTimers;

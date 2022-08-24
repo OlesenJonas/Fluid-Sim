@@ -1,4 +1,4 @@
-//calculate the average absolute divergence of the velocity texture
+//calculate the left over divergence
 
 #version 450
 #ifdef GLSLANGVALIDATOR
@@ -11,13 +11,17 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 uniform layout (binding = 0) sampler3D velocity;
+uniform layout (binding = 1) sampler3D oldDivergence;
+
 layout(std430, binding = 10) writeonly buffer divergenceAverageSSBO
 {
-    float averageDiv;
+    float totalDivBefore;
+    float totalDivBeforeInner;
+    float totalDivAfter;
+    float totalDivAfterInner;
 };
 
-// shared float average;
-shared float divergences[gl_WorkGroupSize.x][gl_WorkGroupSize.y];
+shared vec4 divergences[gl_WorkGroupSize.x][gl_WorkGroupSize.y];
 
 void main() 
 {
@@ -73,12 +77,18 @@ void main()
         const float partialYY = (ynext.y - yprev.y)/(2*deltaY);
         const float partialZZ = (znext.z - zprev.z)/(2*deltaZ);
 
-        float div = (partialXX + partialYY + partialZZ);
-        div = abs(div);
+        bool inside = texelPos.x > 0 && texelPos.y > 0 && texelPos.z > 0 &&
+                      texelPos.x < textureSize.x-1 && texelPos.y < textureSize.y-1 && texelPos.z < textureSize.z-1;
 
-        //Assume whole workgroup fits "into texture" (can safely assume that for now, 64/128/256 are all divisibly by 16)
-        //average per pixel
-        div /= gl_WorkGroupSize.x*gl_WorkGroupSize.y*gl_WorkGroupSize.z;
+        float newDiv = abs(partialXX + partialYY + partialZZ);
+        float newDivInner = inside ? newDiv : 0.0;
+
+        float oldDiv = abs(texelFetch(oldDivergence, texelPos, 0).x);
+        float oldDivInner = inside ? oldDiv : 0.0;
+
+        vec4 div = vec4(oldDiv, oldDivInner, newDiv, newDivInner);
+
+        //Assume whole workgroup "fits into texture" (can safely assume that for now, 64/128/256 are all divisibly by 16)
 
         // atomicAdd(average, div);
         divergences[gl_LocalInvocationID.x][gl_LocalInvocationID.y] = div;
@@ -110,7 +120,6 @@ void main()
                 divergences[gl_LocalInvocationID.x + 4][gl_LocalInvocationID.y + 4];
         }
         barrier();
-        //INFO: for shared variables, barrier() is enough. For other memory types barrier() + memoryBarrier*() is necessary
         
         if(gl_LocalInvocationID == uvec3(0,0,0))
         {
@@ -118,10 +127,14 @@ void main()
                 divergences[gl_LocalInvocationID.x + 8][gl_LocalInvocationID.y    ] +
                 divergences[gl_LocalInvocationID.x    ][gl_LocalInvocationID.y + 8] +
                 divergences[gl_LocalInvocationID.x + 8][gl_LocalInvocationID.y + 8]; 
+            
             div = divergences[gl_LocalInvocationID.x][gl_LocalInvocationID.y];
+
             //average per workgroup
-            div /= gl_NumWorkGroups.x * gl_NumWorkGroups.y * gl_NumWorkGroups.z;
-            atomicAdd(averageDiv, div);
+            atomicAdd(totalDivBefore, div.x);
+            atomicAdd(totalDivBeforeInner, div.y);
+            atomicAdd(totalDivAfter, div.z);
+            atomicAdd(totalDivAfterInner, div.w);
         }
     }
 }

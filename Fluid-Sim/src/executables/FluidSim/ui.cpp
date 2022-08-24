@@ -254,11 +254,28 @@ void drawFrameInfoUI(
         {
             ImGui::Checkbox(
                 "Use last frames pressure as initial guess", &fluidSolverSettings.useLastFrameAsInitialGuess);
-            ImGui::Combo("Solver Mode", &fluidSolverSettings.solverMode, "Jacobi\0RBGS\0");
-            int temp = fluidSolverSettings.iterations;
-            if(ImGui::SliderInt("Solver Iteration", &temp, 0, 255))
+            ImGui::Combo(
+                "Solver Mode", (int*)&fluidSolverSettings.solverMode, "Jacobi\0RBGS\0Multigrid (Jacobi)\0");
+            if(fluidSolverSettings.solverMode < FluidSolver::PressureSolver::Multigrid)
             {
-                fluidSolverSettings.iterations = temp;
+                int temp = fluidSolverSettings.iterations;
+                if(ImGui::SliderInt("Solver Iteration", &temp, 0, 255))
+                {
+                    fluidSolverSettings.iterations = temp;
+                }
+            }
+            else
+            {
+                int tempIter = fluidSolverSettings.mgPrePostSmoothIterations;
+                if(ImGui::SliderInt("Pre- & Postsmoothing Iterations", &tempIter, 0, 255))
+                {
+                    fluidSolverSettings.mgPrePostSmoothIterations = tempIter;
+                }
+                int tempLevels = fluidSolverSettings.mgLevels;
+                if(ImGui::SliderInt("Multigrid Levels", &tempLevels, 1, fluidSolver.getLevels()))
+                {
+                    fluidSolverSettings.mgLevels = tempLevels;
+                }
             }
         }
         if(ImGui::CollapsingHeader("Divergence Remainder"))
@@ -267,10 +284,27 @@ void drawFrameInfoUI(
                 "Calculate remaining divergence", &fluidSolverSettings.calculateRemainingDivergence);
             if(fluidSolverSettings.calculateRemainingDivergence)
             {
+                auto remainingDivergence = fluidSolver.getRemainingDivergence();
                 ImGui::SameLine();
                 fsTimers[FluidSolver::Timer::DivergenceRemainder].evaluate();
+                float fullRatio = remainingDivergence.totalDivAfter / remainingDivergence.totalDivBefore;
+                float innerRatio =
+                    remainingDivergence.totalDivAfterInner / remainingDivergence.totalDivBeforeInner;
+                float pixels = fluidSolver.getVelocityTexture().getWidth() *
+                               fluidSolver.getVelocityTexture().getHeight() *
+                               fluidSolver.getVelocityTexture().getDepth();
                 ImGui::Text("- %.3fms", fsTimers[FluidSolver::Timer::DivergenceRemainder].timeMilliseconds());
-                ImGui::Text("Remaining divergence (per Pixel): %6.3f", fluidSolver.getRemainingDivergence());
+                ImGui::TextUnformatted("Total absolute remaining divergence:");
+                ImGui::TextUnformatted("All:");
+                ImGui::Text("Before:%6.3f", remainingDivergence.totalDivBefore);
+                ImGui::Text("After:%6.3f", remainingDivergence.totalDivAfter);
+                ImGui::Text("After (per pixel):%6.3f", remainingDivergence.totalDivAfter / pixels);
+                ImGui::Text("Left over:%6.3f", fullRatio);
+                ImGui::TextUnformatted("Without Border Texel:");
+                ImGui::Text("Before:%6.3f", remainingDivergence.totalDivBeforeInner);
+                ImGui::Text("After:%6.3f", remainingDivergence.totalDivAfterInner);
+                ImGui::Text("After (per pixel):%6.3f", remainingDivergence.totalDivAfterInner / pixels);
+                ImGui::Text("Left over:%6.3f", innerRatio);
             }
         }
     }
