@@ -12,9 +12,6 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 uniform layout (binding = 0) sampler3D rh;
 uniform layout(FORMAT, binding = 0) writeonly restrict image3D r2h;
 
-const float alpha = -1.0;
-const float beta = 6.0;
-
 void main() 
 {
     ivec3 texelPos = ivec3(gl_GlobalInvocationID);
