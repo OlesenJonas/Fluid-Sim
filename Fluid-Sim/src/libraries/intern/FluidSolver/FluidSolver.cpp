@@ -69,9 +69,6 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .height = height,
           .depth = depth,
           .internalFormat = vectorInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
       }),
       velocityTex1({
           .name = "velocityTex1",
@@ -79,9 +76,6 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .height = height,
           .depth = depth,
           .internalFormat = vectorInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
       }),
       vectorPhiTildeTex({
           .name = "phiTildeVector",
@@ -89,9 +83,6 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .height = height,
           .depth = depth,
           .internalFormat = vectorInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
       }),
       vectorPhiTilde2Tex({
           .name = "phiTilde2Vector",
@@ -99,9 +90,6 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .height = height,
           .depth = depth,
           .internalFormat = vectorInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
       }),
       densityTex0({
           .name = "densityTex0",
@@ -109,9 +97,6 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .height = height,
           .depth = depth,
           .internalFormat = scalarInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
       }),
       densityTex1({
           .name = "densityTex1",
@@ -119,9 +104,6 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .height = height,
           .depth = depth,
           .internalFormat = scalarInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
       }),
       temperatureTex0({
           .name = "temperatureTex0",
@@ -129,9 +111,6 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .height = height,
           .depth = depth,
           .internalFormat = scalarInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
       }),
       temperatureTex1({
           .name = "temperatureTex1",
@@ -139,9 +118,6 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .height = height,
           .depth = depth,
           .internalFormat = scalarInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
       }),
       scalarPhiTildeTex({
           .name = "phiTildeScalar",
@@ -149,9 +125,7 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .height = height,
           .depth = depth,
           .internalFormat = scalarInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
+
       }),
       scalarPhiTilde2Tex({
           .name = "phiTilde2Scalar",
@@ -159,9 +133,6 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .height = height,
           .depth = depth,
           .internalFormat = scalarInternalFormat,
-          .wrapS = GL_CLAMP_TO_EDGE,
-          .wrapT = GL_CLAMP_TO_EDGE,
-          .wrapR = GL_CLAMP_TO_EDGE,
       }),
 
       divergenceTextures(levels), pressureTextures0(levels), pressureTextures1(levels),
