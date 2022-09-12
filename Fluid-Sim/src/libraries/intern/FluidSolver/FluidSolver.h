@@ -171,12 +171,14 @@ class FluidSolver
     ShaderProgram impulseShader;
     ShaderProgram buoyancyShader;
     ShaderProgram divergenceShader;
+    ShaderProgram divergenceMultigridShader;
     ShaderProgram jacobiShader;
     ShaderProgram gaussSeidelShader;
     ShaderProgram residualShader;
     ShaderProgram restrictShader;
     ShaderProgram correctShader;
     ShaderProgram pressureSubShader;
+    ShaderProgram pressureSubMultigridShader;
     ShaderProgram divergenceRemainderShader;
 
     // todo: optimize, re-use textures for different passes
@@ -191,9 +193,13 @@ class FluidSolver
     Texture3D temperatureTex1;
     Texture3D scalarPhiTildeTex;
     Texture3D scalarPhiTilde2Tex;
-    std::vector<Texture3D> divergenceTextures;
-    std::vector<Texture3D> pressureTextures0;
-    std::vector<Texture3D> pressureTextures1;
+    Texture3D divergenceTex;
+    Texture3D pressureTex0;
+    Texture3D pressureTex1;
+
+    std::vector<Texture3D> lhsTextures0;
+    std::vector<Texture3D> lhsTextures1;
+    std::vector<Texture3D> rhsTextures;
 
     const Computepass advectVelocitySimplePass;
     const Computepass advectVelocityBFECCPass1;
@@ -210,7 +216,9 @@ class FluidSolver
     const Computepass buoyancyPass;
     const Computepass impulsePass;
     const Computepass divergencePass;
+    const Computepass divergenceMultigridPass;
     const Computepass pressureSubPass;
+    const Computepass pressureSubMultigridPass;
     const Computepass divergenceRemainderPass;
 
     Settings settings;

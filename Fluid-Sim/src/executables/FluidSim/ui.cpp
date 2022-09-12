@@ -294,17 +294,17 @@ void drawFrameInfoUI(
                                fluidSolver.getVelocityTexture().getHeight() *
                                fluidSolver.getVelocityTexture().getDepth();
                 ImGui::Text("- %.3fms", fsTimers[FluidSolver::Timer::DivergenceRemainder].timeMilliseconds());
-                ImGui::TextUnformatted("Total absolute remaining divergence:");
+                ImGui::TextUnformatted("Total absolute remaining divergence");
                 ImGui::TextUnformatted("All:");
-                ImGui::Text("Before:%6.3f", remainingDivergence.totalDivBefore);
+                // ImGui::Text("Before:%6.3f", remainingDivergence.totalDivBefore);
                 ImGui::Text("After :%6.3f", remainingDivergence.totalDivAfter);
                 ImGui::Text("After (per pixel):%6.3f", remainingDivergence.totalDivAfter / pixels);
-                ImGui::Text("Perc left:%6.3f", fullRatio * 100);
+                // ImGui::Text("Perc left:%6.3f", fullRatio * 100);
                 ImGui::TextUnformatted("Without Border Texel:");
-                ImGui::Text("Before:%6.3f", remainingDivergence.totalDivBeforeInner);
+                // ImGui::Text("Before:%6.3f", remainingDivergence.totalDivBeforeInner);
                 ImGui::Text("After :%6.3f", remainingDivergence.totalDivAfterInner);
                 ImGui::Text("After (per pixel):%6.3f", remainingDivergence.totalDivAfterInner / pixels);
-                ImGui::Text("Perc over:%6.3f", innerRatio * 100);
+                // ImGui::Text("Perc over:%6.3f", innerRatio * 100);
             }
         }
     }
