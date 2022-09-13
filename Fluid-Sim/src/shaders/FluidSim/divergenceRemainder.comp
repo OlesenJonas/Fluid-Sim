@@ -11,7 +11,7 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 uniform layout (binding = 0) sampler3D velocity;
-uniform layout (binding = 1) sampler3D oldDivergence;
+// uniform layout (binding = 1) sampler3D oldDivergence;
 
 layout(std430, binding = 10) writeonly buffer divergenceAverageSSBO
 {
@@ -83,10 +83,11 @@ void main()
         float newDiv = abs(partialXX + partialYY + partialZZ);
         float newDivInner = inside ? newDiv : 0.0;
 
-        float oldDiv = abs(texelFetch(oldDivergence, texelPos, 0).x);
-        float oldDivInner = inside ? oldDiv : 0.0;
+        // float oldDiv = abs(texelFetch(oldDivergence, texelPos, 0).x);
+        // float oldDivInner = inside ? oldDiv : 0.0;
 
-        vec4 div = vec4(oldDiv, oldDivInner, newDiv, newDivInner);
+        // vec4 div = vec4(oldDiv, oldDivInner, newDiv, newDivInner);
+        vec4 div = vec4(0, 0, newDiv, newDivInner);
 
         //Assume whole workgroup "fits into texture" (can safely assume that for now, 64/128/256 are all divisibly by 16)
 

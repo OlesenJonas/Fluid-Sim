@@ -2,6 +2,7 @@
 
 #include <glad/glad/glad.h>
 
+#include <stdint.h>
 #include <vector>
 
 #include <intern/Computepass/Computepass.h>
@@ -38,15 +39,15 @@ class FluidSolver
 
     inline const Texture3D& getVelocityTexture() const
     {
-        return velocityTex0;
+        return velocityTexFront;
     }
     inline const Texture3D& getDensityTexture() const
     {
-        return densityTex0;
+        return densityTexFront;
     }
     inline const Texture3D& getTemperatureTexture() const
     {
-        return temperatureTex0;
+        return temperatureTexFront;
     }
 
     enum Timer
@@ -99,8 +100,14 @@ class FluidSolver
         bool useLastFrameAsInitialGuess = false;
         PressureSolver solverMode = PressureSolver::Jacobi;
         uint16_t iterations = 40;
-        uint16_t mgPrePostSmoothIterations = 10;
+        struct LevelSettings
+        {
+            uint16_t preSmoothIterations = 10;
+            uint16_t postSmoothIterations = 10;
+            uint16_t iterations = 10;
+        };
         uint16_t mgLevels = 2;
+        std::vector<LevelSettings> mgLevelSettings;
         bool calculateRemainingDivergence = false;
     };
 
@@ -171,29 +178,35 @@ class FluidSolver
     ShaderProgram impulseShader;
     ShaderProgram buoyancyShader;
     ShaderProgram divergenceShader;
+    ShaderProgram divergenceMultigridShader;
     ShaderProgram jacobiShader;
     ShaderProgram gaussSeidelShader;
     ShaderProgram residualShader;
     ShaderProgram restrictShader;
     ShaderProgram correctShader;
     ShaderProgram pressureSubShader;
+    ShaderProgram pressureSubMultigridShader;
     ShaderProgram divergenceRemainderShader;
 
     // todo: optimize, re-use textures for different passes
     //       use references to keep names for readability
-    Texture3D velocityTex0;
-    Texture3D velocityTex1;
+    Texture3D velocityTexFront;
+    Texture3D velocityTexBack;
     Texture3D vectorPhiTildeTex;
     Texture3D vectorPhiTilde2Tex;
-    Texture3D densityTex0;
-    Texture3D densityTex1;
-    Texture3D temperatureTex0;
-    Texture3D temperatureTex1;
+    Texture3D densityTexFront;
+    Texture3D densityTexBack;
+    Texture3D temperatureTexFront;
+    Texture3D temperatureTexBack;
     Texture3D scalarPhiTildeTex;
     Texture3D scalarPhiTilde2Tex;
-    std::vector<Texture3D> divergenceTextures;
-    std::vector<Texture3D> pressureTextures0;
-    std::vector<Texture3D> pressureTextures1;
+    Texture3D divergenceTex;
+    Texture3D pressureTexFront;
+    Texture3D pressureTexBack;
+
+    std::vector<Texture3D> lhsTexturesFront;
+    std::vector<Texture3D> lhsTexturesBack;
+    std::vector<Texture3D> rhsTextures;
 
     const Computepass advectVelocitySimplePass;
     const Computepass advectVelocityBFECCPass1;
@@ -210,7 +223,9 @@ class FluidSolver
     const Computepass buoyancyPass;
     const Computepass impulsePass;
     const Computepass divergencePass;
+    const Computepass divergenceMultigridPass;
     const Computepass pressureSubPass;
+    const Computepass pressureSubMultigridPass;
     const Computepass divergenceRemainderPass;
 
     Settings settings;

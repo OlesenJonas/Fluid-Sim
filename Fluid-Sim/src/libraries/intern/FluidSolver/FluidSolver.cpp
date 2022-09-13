@@ -46,6 +46,9 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
 
       divergenceShader(
           COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/divergence.comp"}, {{"FORMAT", scalarShaderFormat}}),
+      divergenceMultigridShader(
+          COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/divergenceMultigrid.comp"},
+          {{"FORMAT", scalarShaderFormat}}),
       jacobiShader(
           COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/jacobi.comp"}, {{"FORMAT", scalarShaderFormat}}),
       gaussSeidelShader(
@@ -60,18 +63,21 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
       pressureSubShader(
           COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/subPressureGrad.comp"},
           {{"FORMAT", vectorShaderFormat}}),
+      pressureSubMultigridShader(
+          COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/subPressureGradMultigrid.comp"},
+          {{"FORMAT", vectorShaderFormat}}),
 
       divergenceRemainderShader(COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/divergenceRemainder.comp"}),
 
-      velocityTex0({
-          .name = "velocityTex0",
+      velocityTexFront({
+          .name = "velocityTexFront",
           .width = width,
           .height = height,
           .depth = depth,
           .internalFormat = vectorInternalFormat,
       }),
-      velocityTex1({
-          .name = "velocityTex1",
+      velocityTexBack({
+          .name = "velocityTexBack",
           .width = width,
           .height = height,
           .depth = depth,
@@ -91,29 +97,29 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .depth = depth,
           .internalFormat = vectorInternalFormat,
       }),
-      densityTex0({
-          .name = "densityTex0",
+      densityTexFront({
+          .name = "densityTexFront",
           .width = width,
           .height = height,
           .depth = depth,
           .internalFormat = scalarInternalFormat,
       }),
-      densityTex1({
-          .name = "densityTex1",
+      densityTexBack({
+          .name = "densityTexBack",
           .width = width,
           .height = height,
           .depth = depth,
           .internalFormat = scalarInternalFormat,
       }),
-      temperatureTex0({
-          .name = "temperatureTex0",
+      temperatureTexFront({
+          .name = "temperatureTexFront",
           .width = width,
           .height = height,
           .depth = depth,
           .internalFormat = scalarInternalFormat,
       }),
-      temperatureTex1({
-          .name = "temperatureTex1",
+      temperatureTexBack({
+          .name = "temperatureTexBack",
           .width = width,
           .height = height,
           .depth = depth,
@@ -134,8 +140,29 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .depth = depth,
           .internalFormat = scalarInternalFormat,
       }),
+      divergenceTex({
+          .name = "divergenceTex",
+          .width = width,
+          .height = height,
+          .depth = depth,
+          .internalFormat = scalarInternalFormat,
+      }),
+      pressureTexFront({
+          .name = "pressureTexFront",
+          .width = width,
+          .height = height,
+          .depth = depth,
+          .internalFormat = scalarInternalFormat,
+      }),
+      pressureTexBack({
+          .name = "pressureTexBack",
+          .width = width,
+          .height = height,
+          .depth = depth,
+          .internalFormat = scalarInternalFormat,
+      }),
 
-      divergenceTextures(levels), pressureTextures0(levels), pressureTextures1(levels),
+      lhsTexturesFront(levels), lhsTexturesBack(levels), rhsTextures(levels),
 
       advectVelocitySimplePass(ComputepassDesc{
           .name = "Advect Velocity Simple",
@@ -145,11 +172,11 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0}, //
-               {.unit = 1, .texture = &velocityTex0}},
+              {{.unit = 0, .texture = &velocityTexFront}, //
+               {.unit = 1, .texture = &velocityTexFront}},
           .imageBindings =
               {{.unit = 0,
-                .texture = &velocityTex1,
+                .texture = &velocityTexBack,
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = vectorInternalFormat}}}),
@@ -162,8 +189,8 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0}, //
-               {.unit = 1, .texture = &velocityTex0}},
+              {{.unit = 0, .texture = &velocityTexFront}, //
+               {.unit = 1, .texture = &velocityTexFront}},
           .imageBindings =
               {{.unit = 0,
                 .texture = &vectorPhiTildeTex,
@@ -179,8 +206,8 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0}, //
-               {.unit = 1, .texture = &velocityTex0}, //
+              {{.unit = 0, .texture = &velocityTexFront}, //
+               {.unit = 1, .texture = &velocityTexFront}, //
                {.unit = 2, .texture = &vectorPhiTildeTex}},
           .imageBindings =
               {{.unit = 0,
@@ -197,12 +224,12 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0}, //
-               {.unit = 1, .texture = &velocityTex0}, //
+              {{.unit = 0, .texture = &velocityTexFront}, //
+               {.unit = 1, .texture = &velocityTexFront}, //
                {.unit = 2, .texture = &vectorPhiTilde2Tex}},
           .imageBindings =
               {{.unit = 0,
-                .texture = &velocityTex1,
+                .texture = &velocityTexBack,
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = vectorInternalFormat}}}),
@@ -215,11 +242,11 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0}, //
-               {.unit = 1, .texture = &densityTex0}},
+              {{.unit = 0, .texture = &velocityTexFront}, //
+               {.unit = 1, .texture = &densityTexFront}},
           .imageBindings =
               {{.unit = 0,
-                .texture = &densityTex1,
+                .texture = &densityTexBack,
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = scalarInternalFormat}}}),
@@ -232,8 +259,8 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0}, //
-               {.unit = 1, .texture = &densityTex0}},
+              {{.unit = 0, .texture = &velocityTexFront}, //
+               {.unit = 1, .texture = &densityTexFront}},
           .imageBindings =
               {{.unit = 0,
                 .texture = &scalarPhiTildeTex,
@@ -249,8 +276,8 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0}, //
-               {.unit = 1, .texture = &densityTex0},  //
+              {{.unit = 0, .texture = &velocityTexFront}, //
+               {.unit = 1, .texture = &densityTexFront},  //
                {.unit = 2, .texture = &scalarPhiTildeTex}},
           .imageBindings =
               {{.unit = 0,
@@ -267,12 +294,12 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0}, //
-               {.unit = 1, .texture = &densityTex0},  //
+              {{.unit = 0, .texture = &velocityTexFront}, //
+               {.unit = 1, .texture = &densityTexFront},  //
                {.unit = 2, .texture = &scalarPhiTilde2Tex}},
           .imageBindings =
               {{.unit = 0,
-                .texture = &densityTex1,
+                .texture = &densityTexBack,
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = scalarInternalFormat}}}),
@@ -285,11 +312,11 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0}, //
-               {.unit = 1, .texture = &temperatureTex0}},
+              {{.unit = 0, .texture = &velocityTexFront}, //
+               {.unit = 1, .texture = &temperatureTexFront}},
           .imageBindings =
               {{.unit = 0,
-                .texture = &temperatureTex1,
+                .texture = &temperatureTexBack,
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = scalarInternalFormat}}}),
@@ -302,8 +329,8 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0}, //
-               {.unit = 1, .texture = &temperatureTex0}},
+              {{.unit = 0, .texture = &velocityTexFront}, //
+               {.unit = 1, .texture = &temperatureTexFront}},
           .imageBindings =
               {{.unit = 0,
                 .texture = &scalarPhiTildeTex,
@@ -319,8 +346,8 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0},    //
-               {.unit = 1, .texture = &temperatureTex0}, //
+              {{.unit = 0, .texture = &velocityTexFront},    //
+               {.unit = 1, .texture = &temperatureTexFront}, //
                {.unit = 2, .texture = &scalarPhiTildeTex}},
           .imageBindings =
               {{.unit = 0,
@@ -337,12 +364,12 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0},    //
-               {.unit = 1, .texture = &temperatureTex0}, //
+              {{.unit = 0, .texture = &velocityTexFront},    //
+               {.unit = 1, .texture = &temperatureTexFront}, //
                {.unit = 2, .texture = &scalarPhiTilde2Tex}},
           .imageBindings =
               {{.unit = 0,
-                .texture = &temperatureTex1,
+                .texture = &temperatureTexBack,
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = scalarInternalFormat}}}),
@@ -355,12 +382,12 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0},
-               {.unit = 1, .texture = &densityTex0},
-               {.unit = 2, .texture = &temperatureTex0}},
+              {{.unit = 0, .texture = &velocityTexFront},
+               {.unit = 1, .texture = &densityTexFront},
+               {.unit = 2, .texture = &temperatureTexFront}},
           .imageBindings =
               {{.unit = 0,
-                .texture = &velocityTex1,
+                .texture = &velocityTexBack,
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = vectorInternalFormat}}}),
@@ -373,22 +400,22 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &velocityTex0},
-               {.unit = 1, .texture = &temperatureTex0},
-               {.unit = 2, .texture = &densityTex0}},
+              {{.unit = 0, .texture = &velocityTexFront},
+               {.unit = 1, .texture = &temperatureTexFront},
+               {.unit = 2, .texture = &densityTexFront}},
           .imageBindings =
               {{.unit = 0,
-                .texture = &velocityTex1,
+                .texture = &velocityTexBack,
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = vectorInternalFormat},
                {.unit = 1,
-                .texture = &temperatureTex1,
+                .texture = &temperatureTexBack,
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = scalarInternalFormat},
                {.unit = 2,
-                .texture = &densityTex1,
+                .texture = &densityTexBack,
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = scalarInternalFormat}}}),
@@ -400,10 +427,25 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numY = UintDivAndCeil(height, 16),
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
-          .textureBindings = {{.unit = 0, .texture = &velocityTex0}},
+          .textureBindings = {{.unit = 0, .texture = &velocityTexFront}},
           .imageBindings =
               {{.unit = 0,
-                .texture = &divergenceTextures[0],
+                .texture = &divergenceTex,
+                .layered = GL_TRUE,
+                .access = GL_WRITE_ONLY,
+                .format = scalarInternalFormat}}}),
+
+      divergenceMultigridPass(ComputepassDesc{
+          .name = "Divergence",
+          .shaderPtr = &divergenceMultigridShader,
+          .numX = UintDivAndCeil(width, 16),
+          .numY = UintDivAndCeil(height, 16),
+          .numZ = static_cast<uint32_t>(depth),
+          .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
+          .textureBindings = {{.unit = 0, .texture = &velocityTexFront}},
+          .imageBindings =
+              {{.unit = 0,
+                .texture = &rhsTextures[0],
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = scalarInternalFormat}}}),
@@ -416,11 +458,28 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings =
-              {{.unit = 0, .texture = &pressureTextures0[0]}, //
-               {.unit = 1, .texture = &velocityTex0}},
+              {{.unit = 0, .texture = &pressureTexFront}, //
+               {.unit = 1, .texture = &velocityTexFront}},
           .imageBindings =
               {{.unit = 0,
-                .texture = &velocityTex1,
+                .texture = &velocityTexBack,
+                .layered = GL_TRUE,
+                .access = GL_WRITE_ONLY,
+                .format = vectorInternalFormat}}}),
+
+      pressureSubMultigridPass(ComputepassDesc{
+          .name = "Pressure Sub",
+          .shaderPtr = &pressureSubMultigridShader,
+          .numX = UintDivAndCeil(width, 16),
+          .numY = UintDivAndCeil(height, 16),
+          .numZ = static_cast<uint32_t>(depth),
+          .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
+          .textureBindings =
+              {{.unit = 0, .texture = &lhsTexturesFront[0]}, //
+               {.unit = 1, .texture = &velocityTexFront}},
+          .imageBindings =
+              {{.unit = 0,
+                .texture = &velocityTexBack,
                 .layered = GL_TRUE,
                 .access = GL_WRITE_ONLY,
                 .format = vectorInternalFormat}}}),
@@ -432,7 +491,7 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .numY = UintDivAndCeil(height, 16),
           .numZ = static_cast<uint32_t>(depth),
           .barriers = GL_BUFFER_UPDATE_BARRIER_BIT,
-          .textureBindings = {{.unit = 0, .texture = &velocityTex0}}})
+          .textureBindings = {{.unit = 0, .texture = &velocityTexFront}}})
 
 {
     // not allocating these as 1 texture with multiple mips since then .swap() would swap all levels
@@ -446,37 +505,27 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
         int levelWidth = std::max(width / (1 << i), 1);
         int levelHeight = std::max(height / (1 << i), 1);
         int levelDepth = std::max(depth / (1 << i), 1);
-        divergenceTextures[i] = Texture3D{{
-            .name = std::format("divergenceTexLevel{}", i).c_str(),
-            .width = levelWidth,
-            .height = levelHeight,
-            .depth = levelDepth,
-            .internalFormat = scalarInternalFormat,
-            .wrapS = GL_CLAMP_TO_EDGE,
-            .wrapT = GL_CLAMP_TO_EDGE,
-            .wrapR = GL_CLAMP_TO_EDGE,
-        }};
-        pressureTextures0[i] = Texture3D{{
-            .name = std::format("pressureTex0Level{}", i).c_str(),
-            .width = levelWidth,
-            .height = levelHeight,
-            .depth = levelDepth,
-            .internalFormat = scalarInternalFormat,
-            .wrapS = GL_CLAMP_TO_EDGE,
-            .wrapT = GL_CLAMP_TO_EDGE,
-            .wrapR = GL_CLAMP_TO_EDGE,
-        }};
-        pressureTextures1[i] = Texture3D{{
-            .name = std::format("pressureTex1Level{}", i).c_str(),
-            .width = levelWidth,
-            .height = levelHeight,
-            .depth = levelDepth,
-            .internalFormat = scalarInternalFormat,
-            .wrapS = GL_CLAMP_TO_EDGE,
-            .wrapT = GL_CLAMP_TO_EDGE,
-            .wrapR = GL_CLAMP_TO_EDGE,
-        }};
+        rhsTextures[i] = Texture3D{
+            {.name = std::format("rhsTexture_level{}", i).c_str(),
+             .width = levelWidth,
+             .height = levelHeight,
+             .depth = levelDepth,
+             .internalFormat = scalarInternalFormat}};
+        lhsTexturesFront[i] = Texture3D{
+            {.name = std::format("lhsTexture0_level{}", i).c_str(),
+             .width = levelWidth,
+             .height = levelHeight,
+             .depth = levelDepth,
+             .internalFormat = scalarInternalFormat}};
+        lhsTexturesBack[i] = Texture3D{
+            {.name = std::format("lhsTexture1_level{}", i).c_str(),
+             .width = levelWidth,
+             .height = levelHeight,
+             .depth = levelDepth,
+             .internalFormat = scalarInternalFormat}};
     }
+
+    settings.mgLevelSettings.resize(levels);
 
     // not part of compute bindinds since these calls need to be made only once
     //(total amount of buffers is low enough that no binding point has to be reused)
@@ -508,21 +557,24 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
 void FluidSolver::clear()
 {
     const glm::vec4 clear = glm::vec4(0.0f);
-    glClearTexImage(velocityTex0.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-    glClearTexImage(velocityTex1.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+    glClearTexImage(velocityTexFront.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+    glClearTexImage(velocityTexBack.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
     glClearTexImage(vectorPhiTilde2Tex.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
     glClearTexImage(vectorPhiTildeTex.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-    glClearTexImage(densityTex0.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-    glClearTexImage(densityTex1.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-    glClearTexImage(temperatureTex0.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-    glClearTexImage(temperatureTex1.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+    glClearTexImage(densityTexFront.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+    glClearTexImage(densityTexBack.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+    glClearTexImage(temperatureTexFront.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+    glClearTexImage(temperatureTexBack.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
     glClearTexImage(scalarPhiTildeTex.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
     glClearTexImage(scalarPhiTilde2Tex.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+    glClearTexImage(divergenceTex.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+    glClearTexImage(pressureTexFront.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+    glClearTexImage(pressureTexBack.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
     for(int i = 0; i < levels; i++)
     {
-        glClearTexImage(divergenceTextures[i].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-        glClearTexImage(pressureTextures0[i].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-        glClearTexImage(pressureTextures1[i].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+        glClearTexImage(rhsTextures[i].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+        glClearTexImage(lhsTexturesFront[i].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+        glClearTexImage(lhsTexturesBack[i].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
     }
 }
 
@@ -572,7 +624,7 @@ void FluidSolver::update()
         advectTempSimplePass.run();
         advectTempSimplePass.endMarker();
     }
-    temperatureTex0.swap(temperatureTex1);
+    temperatureTexFront.swap(temperatureTexBack);
 
     if(settings.useBFECCDensity)
     {
@@ -598,7 +650,7 @@ void FluidSolver::update()
         advectDensitySimplePass.run();
         advectDensitySimplePass.endMarker();
     }
-    densityTex0.swap(densityTex1);
+    densityTexFront.swap(densityTexBack);
 
     if(settings.useBFECCVelocity)
     {
@@ -624,7 +676,7 @@ void FluidSolver::update()
         advectVelocitySimplePass.run();
         advectVelocitySimplePass.endMarker();
     }
-    velocityTex0.swap(velocityTex1);
+    velocityTexFront.swap(velocityTexBack);
     glPopDebugGroup();
 
     componentTimers[Advection].end();
@@ -640,53 +692,65 @@ void FluidSolver::update()
     glUniform1f(4, impulse.size);
     impulsePass.run();
     impulsePass.endMarker();
-    velocityTex0.swap(velocityTex1);
-    temperatureTex0.swap(temperatureTex1);
-    densityTex0.swap(densityTex1);
+    velocityTexFront.swap(velocityTexBack);
+    temperatureTexFront.swap(temperatureTexBack);
+    densityTexFront.swap(densityTexBack);
     componentTimers[Impulse].end();
 
     componentTimers[Buoyancy].start();
     buoyancyPass.execute();
-    velocityTex0.swap(velocityTex1);
+    velocityTexFront.swap(velocityTexBack);
     componentTimers[Buoyancy].end();
 
     componentTimers[Divergence].start();
-    divergencePass.execute();
+    if(settings.solverMode == PressureSolver::Jacobi || settings.solverMode == PressureSolver::RBGaussSeidel)
+    {
+        divergencePass.execute();
+    }
+    else if(settings.solverMode == PressureSolver::Multigrid)
+    {
+        divergenceMultigridPass.execute();
+    }
     componentTimers[Divergence].end();
 
     componentTimers[PressureSolve].start();
     glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Pressure Solve");
     // not using passes for these since they dont work well with loops yet (eg lots of
     // duplicate/unnecessary bindings)
-    if(!settings.useLastFrameAsInitialGuess)
-    {
-        const glm::vec4 clear = glm::vec4(0.0f);
-        glClearTexImage(pressureTextures0[0].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-    }
     if(settings.solverMode == PressureSolver::Jacobi)
     {
+        if(!settings.useLastFrameAsInitialGuess)
+        {
+            const glm::vec4 clear = glm::vec4(0.0f);
+            glClearTexImage(pressureTexFront.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+        }
         glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Jacobi");
         jacobiShader.useProgram();
-        glBindTextureUnit(1, divergenceTextures[0].getTextureID());
+        glBindTextureUnit(1, divergenceTex.getTextureID());
         for(decltype(settings.iterations) i = 0; i < settings.iterations; i++)
         {
-            glBindTextureUnit(0, pressureTextures0[0].getTextureID());
+            glBindTextureUnit(0, pressureTexFront.getTextureID());
             glBindImageTexture(
-                0, pressureTextures1[0].getTextureID(), 0, GL_TRUE, 0, GL_WRITE_ONLY, scalarInternalFormat);
+                0, pressureTexBack.getTextureID(), 0, GL_TRUE, 0, GL_WRITE_ONLY, scalarInternalFormat);
             glDispatchCompute(
                 UintDivAndCeil(width, 16), UintDivAndCeil(height, 16), static_cast<uint32_t>(depth));
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-            pressureTextures0[0].swap(pressureTextures1[0]);
+            pressureTexFront.swap(pressureTexBack);
         }
         glPopDebugGroup();
     }
     else if(settings.solverMode == PressureSolver::RBGaussSeidel)
     {
+        if(!settings.useLastFrameAsInitialGuess)
+        {
+            const glm::vec4 clear = glm::vec4(0.0f);
+            glClearTexImage(pressureTexFront.getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+        }
         glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Gauss Seidel");
         gaussSeidelShader.useProgram();
-        glBindTextureUnit(0, divergenceTextures[0].getTextureID());
+        glBindTextureUnit(0, divergenceTex.getTextureID());
         glBindImageTexture(
-            0, pressureTextures0[0].getTextureID(), 0, GL_TRUE, 0, GL_READ_WRITE, scalarInternalFormat);
+            0, pressureTexFront.getTextureID(), 0, GL_TRUE, 0, GL_READ_WRITE, scalarInternalFormat);
         for(decltype(settings.iterations) i = 0; i < settings.iterations; i += 2)
         {
             glUniform1ui(0, 0U); // Location specified in shader
@@ -706,126 +770,135 @@ void FluidSolver::update()
     }
     else if(settings.solverMode == PressureSolver::Multigrid)
     {
+        if(!settings.useLastFrameAsInitialGuess)
+        {
+            const glm::vec4 clear = glm::vec4(0.0f);
+            glClearTexImage(lhsTexturesFront[0].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
+        }
         glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Multigrid");
 
         //  V Cycle
         //  Downwards
-        for(int level = 0; level < settings.mgLevels; level++)
+        for(int level = 0; level < settings.mgLevels - 1; level++)
         {
             jacobiShader.useProgram();
-            glBindTextureUnit(1, divergenceTextures[level].getTextureID());
-            for(decltype(settings.mgPrePostSmoothIterations) i = 0; i < settings.mgPrePostSmoothIterations;
+            glBindTextureUnit(1, rhsTextures[level].getTextureID());
+            for(decltype(settings.mgLevelSettings[level].preSmoothIterations) i = 0;
+                i < settings.mgLevelSettings[level].preSmoothIterations;
                 i++)
             {
-                glBindTextureUnit(0, pressureTextures0[level].getTextureID());
+                glBindTextureUnit(0, lhsTexturesFront[level].getTextureID());
                 glBindImageTexture(
                     0,
-                    pressureTextures1[level].getTextureID(),
+                    lhsTexturesBack[level].getTextureID(),
                     0,
                     GL_TRUE,
                     0,
                     GL_WRITE_ONLY,
                     scalarInternalFormat);
                 glDispatchCompute(
-                    UintDivAndCeil(pressureTextures0[level].getDepth(), 16),
-                    UintDivAndCeil(pressureTextures0[level].getHeight(), 16),
-                    static_cast<uint32_t>(pressureTextures0[level].getDepth()));
+                    UintDivAndCeil(lhsTexturesFront[level].getDepth(), 16),
+                    UintDivAndCeil(lhsTexturesFront[level].getHeight(), 16),
+                    static_cast<uint32_t>(lhsTexturesFront[level].getDepth()));
                 glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-                pressureTextures0[level].swap(pressureTextures1[level]);
+                lhsTexturesFront[level].swap(lhsTexturesBack[level]);
             }
-            //"final" pressure is now in pressureTextures0[level]
+            // pre smoothed pressure is now in lhsTexturesFront
 
-            // restrict if not on final level
-            if(level < settings.mgLevels - 1)
-            {
-                // write current level residual into pressureTextures1
-                residualShader.useProgram();
-                glBindTextureUnit(0, pressureTextures0[level].getTextureID());
-                glBindTextureUnit(1, divergenceTextures[level].getTextureID());
-                glBindImageTexture(
-                    0,
-                    pressureTextures1[level].getTextureID(),
-                    0,
-                    GL_TRUE,
-                    0,
-                    GL_WRITE_ONLY,
-                    scalarInternalFormat);
-                glDispatchCompute(
-                    UintDivAndCeil(pressureTextures1[level].getDepth(), 16),
-                    UintDivAndCeil(pressureTextures1[level].getHeight(), 16),
-                    static_cast<uint32_t>(pressureTextures0[level].getDepth()));
-                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+            // restriction
 
-                // restrict from pressureTextures1 into divergenceTextures
-                restrictShader.useProgram();
-                glBindTextureUnit(0, pressureTextures1[level].getTextureID());
-                glBindImageTexture(
-                    0,
-                    divergenceTextures[level + 1].getTextureID(),
-                    0,
-                    GL_TRUE,
-                    0,
-                    GL_WRITE_ONLY,
-                    scalarInternalFormat);
-                glDispatchCompute(
-                    UintDivAndCeil(divergenceTextures[level + 1].getDepth(), 16),
-                    UintDivAndCeil(divergenceTextures[level + 1].getHeight(), 16),
-                    static_cast<uint32_t>(divergenceTextures[level + 1].getDepth()));
+            // write current level residual into lhsTexturesBack
+            residualShader.useProgram();
+            glBindTextureUnit(0, lhsTexturesFront[level].getTextureID());
+            glBindTextureUnit(1, rhsTextures[level].getTextureID());
+            glBindImageTexture(
+                0, lhsTexturesBack[level].getTextureID(), 0, GL_TRUE, 0, GL_WRITE_ONLY, scalarInternalFormat);
+            glDispatchCompute(
+                UintDivAndCeil(lhsTexturesBack[level].getDepth(), 16),
+                UintDivAndCeil(lhsTexturesBack[level].getHeight(), 16),
+                static_cast<uint32_t>(lhsTexturesBack[level].getDepth()));
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
-                // clear new levels initial pressure texture
-                const glm::vec4 clear = glm::vec4(0.0f);
-                glClearTexImage(pressureTextures0[level + 1].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-            }
+            // restrict from lhsTexturesBack into rhsTextures[level + 1]
+            restrictShader.useProgram();
+            glBindTextureUnit(0, lhsTexturesBack[level].getTextureID());
+            glBindImageTexture(
+                0, rhsTextures[level + 1].getTextureID(), 0, GL_TRUE, 0, GL_WRITE_ONLY, scalarInternalFormat);
+            glDispatchCompute(
+                UintDivAndCeil(rhsTextures[level + 1].getDepth(), 16),
+                UintDivAndCeil(rhsTextures[level + 1].getHeight(), 16),
+                static_cast<uint32_t>(rhsTextures[level + 1].getDepth()));
+
+            // clear new levels initial lhs texture
+            const glm::vec4 clear = glm::vec4(0.0f);
+            glClearTexImage(lhsTexturesFront[level + 1].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
         }
-        //  Upwards
-        for(int level = settings.mgLevels - 1; level >= 0; level--)
+
+        // do iterations on last level
+        jacobiShader.useProgram();
+        glBindTextureUnit(1, rhsTextures[settings.mgLevels - 1].getTextureID());
+        for(decltype(settings.mgLevelSettings[settings.mgLevels - 1].iterations) i = 0;
+            i < settings.mgLevelSettings[settings.mgLevels - 1].iterations;
+            i++)
         {
+            glBindTextureUnit(0, lhsTexturesFront[settings.mgLevels - 1].getTextureID());
+            glBindImageTexture(
+                0,
+                lhsTexturesBack[settings.mgLevels - 1].getTextureID(),
+                0,
+                GL_TRUE,
+                0,
+                GL_WRITE_ONLY,
+                scalarInternalFormat);
+            glDispatchCompute(
+                UintDivAndCeil(lhsTexturesFront[settings.mgLevels - 1].getDepth(), 16),
+                UintDivAndCeil(lhsTexturesFront[settings.mgLevels - 1].getHeight(), 16),
+                static_cast<uint32_t>(lhsTexturesFront[settings.mgLevels - 1].getDepth()));
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+            lhsTexturesFront[settings.mgLevels - 1].swap(lhsTexturesBack[settings.mgLevels - 1]);
+        }
+
+        //  Upwards
+        for(int level = settings.mgLevels - 2; level >= 0; level--)
+        {
+            // interpolate and correct with solution on previous level
+
+            // currently interpolation and correction can easily be done in one step since
+            // interpolation just takes nearest neighbour
+            correctShader.useProgram();
+            glBindTextureUnit(0, lhsTexturesFront[level].getTextureID());
+            glBindTextureUnit(1, lhsTexturesFront[level + 1].getTextureID());
+            glBindImageTexture(
+                0, lhsTexturesBack[level].getTextureID(), 0, GL_TRUE, 0, GL_WRITE_ONLY, scalarInternalFormat);
+            glDispatchCompute(
+                UintDivAndCeil(lhsTexturesBack[level].getDepth(), 16),
+                UintDivAndCeil(lhsTexturesBack[level].getHeight(), 16),
+                static_cast<uint32_t>(lhsTexturesFront[level].getDepth()));
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+            lhsTexturesFront[level].swap(lhsTexturesBack[level]);
+
+            // postsmoothing iterations
             jacobiShader.useProgram();
-            glBindTextureUnit(1, divergenceTextures[level].getTextureID());
-            for(decltype(settings.mgPrePostSmoothIterations) i = 0; i < settings.mgPrePostSmoothIterations;
+            glBindTextureUnit(1, rhsTextures[level].getTextureID());
+            for(decltype(settings.mgLevelSettings[level].postSmoothIterations) i = 0;
+                i < settings.mgLevelSettings[level].postSmoothIterations;
                 i++)
             {
-                glBindTextureUnit(0, pressureTextures0[level].getTextureID());
+                glBindTextureUnit(0, lhsTexturesFront[level].getTextureID());
                 glBindImageTexture(
                     0,
-                    pressureTextures1[level].getTextureID(),
+                    lhsTexturesBack[level].getTextureID(),
                     0,
                     GL_TRUE,
                     0,
                     GL_WRITE_ONLY,
                     scalarInternalFormat);
                 glDispatchCompute(
-                    UintDivAndCeil(pressureTextures0[level].getDepth(), 16),
-                    UintDivAndCeil(pressureTextures0[level].getHeight(), 16),
-                    static_cast<uint32_t>(pressureTextures0[level].getDepth()));
+                    UintDivAndCeil(lhsTexturesFront[level].getDepth(), 16),
+                    UintDivAndCeil(lhsTexturesFront[level].getHeight(), 16),
+                    static_cast<uint32_t>(lhsTexturesFront[level].getDepth()));
                 glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-                pressureTextures0[level].swap(pressureTextures1[level]);
-            }
-            //"final" guess is now in pressureTextures0[level]
-
-            // interpolate and correct if not on 0th level
-            if(level > 0)
-            {
-                // currently interpolation and correction can easily be done in one step since
-                // interpolation just takes nearest neighbour
-
-                correctShader.useProgram();
-                glBindTextureUnit(0, pressureTextures0[level - 1].getTextureID());
-                glBindTextureUnit(1, pressureTextures0[level].getTextureID());
-                glBindImageTexture(
-                    0,
-                    pressureTextures1[level - 1].getTextureID(),
-                    0,
-                    GL_TRUE,
-                    0,
-                    GL_WRITE_ONLY,
-                    scalarInternalFormat);
-                glDispatchCompute(
-                    UintDivAndCeil(pressureTextures1[level - 1].getDepth(), 16),
-                    UintDivAndCeil(pressureTextures1[level - 1].getHeight(), 16),
-                    static_cast<uint32_t>(pressureTextures0[level - 1].getDepth()));
-                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-                pressureTextures0[level - 1].swap(pressureTextures1[level - 1]);
+                lhsTexturesFront[level].swap(lhsTexturesBack[level]);
             }
         }
 
@@ -835,20 +908,27 @@ void FluidSolver::update()
     componentTimers[PressureSolve].end();
 
     componentTimers[PressureSubtraction].start();
-    pressureSubPass.execute();
-    velocityTex0.swap(velocityTex1);
+    if(settings.solverMode == PressureSolver::Jacobi || settings.solverMode == PressureSolver::RBGaussSeidel)
+    {
+        pressureSubPass.execute();
+    }
+    else if(settings.solverMode == PressureSolver::Multigrid)
+    {
+        pressureSubMultigridPass.execute();
+    }
+    velocityTexFront.swap(velocityTexBack);
     componentTimers[PressureSubtraction].end();
 
     if(settings.calculateRemainingDivergence)
     {
+        // todo: make more efficient, but low prio since not necessary for solver
         componentTimers[DivergenceRemainder].start();
         GLfloat zero = 0;
         glClearNamedBufferData(divergenceSSBOs[frontBufferIndex], GL_R32F, GL_RED, GL_FLOAT, &zero);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, divergenceSSBOs[frontBufferIndex]);
-        glBindTextureUnit(0, velocityTex0.getTextureID());
-        glBindTextureUnit(1, divergenceTextures[0].getTextureID());
+        glBindTextureUnit(0, velocityTexFront.getTextureID());
+        // glBindTextureUnit(1, rhsTextures[0].getTextureID());
         divergenceRemainderPass.execute();
-        // todo: make more efficient, but low prio since not necessary for solver
         glGetNamedBufferSubData(
             divergenceSSBOs[backBufferIndex], 0, 4 * sizeof(GLfloat), &remainingDivergence);
         componentTimers[DivergenceRemainder].end();
