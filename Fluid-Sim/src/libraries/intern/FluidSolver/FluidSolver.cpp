@@ -587,6 +587,38 @@ void FluidSolver::update()
 
     glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Fluid Solver");
 
+    advectQuantities();
+    addImpulse();
+    addBuoyancy();
+    calculateDivergence();
+    solvePressure();
+    subtractPressureGradient();
+
+    if(settings.calculateRemainingDivergence)
+    {
+        // todo: make more efficient, but low prio since not necessary for solver
+        componentTimers[DivergenceRemainder].start();
+        GLfloat zero = 0;
+        glClearNamedBufferData(divergenceSSBOs[frontBufferIndex], GL_R32F, GL_RED, GL_FLOAT, &zero);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, divergenceSSBOs[frontBufferIndex]);
+        glBindTextureUnit(0, velocityTexFront.getTextureID());
+        // glBindTextureUnit(1, rhsTextures[0].getTextureID());
+        divergenceRemainderPass.execute();
+        glGetNamedBufferSubData(
+            divergenceSSBOs[backBufferIndex], 0, 4 * sizeof(GLfloat), &remainingDivergence);
+        componentTimers[DivergenceRemainder].end();
+    }
+
+    glPopDebugGroup();
+
+    timer.end();
+
+    frontBufferIndex = !frontBufferIndex;
+    backBufferIndex = !backBufferIndex;
+}
+
+void FluidSolver::advectQuantities()
+{
     componentTimers[Advection].start();
     glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Advection");
 
@@ -676,7 +708,10 @@ void FluidSolver::update()
     glPopDebugGroup();
 
     componentTimers[Advection].end();
+}
 
+void FluidSolver::addImpulse()
+{
     componentTimers[Impulse].start();
     impulsePass.startMarker();
     impulsePass.bind();
@@ -692,12 +727,18 @@ void FluidSolver::update()
     temperatureTexFront.swap(temperatureTexBack);
     densityTexFront.swap(densityTexBack);
     componentTimers[Impulse].end();
+}
 
+void FluidSolver::addBuoyancy()
+{
     componentTimers[Buoyancy].start();
     buoyancyPass.execute();
     velocityTexFront.swap(velocityTexBack);
     componentTimers[Buoyancy].end();
+}
 
+void FluidSolver::calculateDivergence()
+{
     componentTimers[Divergence].start();
     if(settings.solverMode == PressureSolver::Jacobi || settings.solverMode == PressureSolver::RBGaussSeidel)
     {
@@ -708,7 +749,10 @@ void FluidSolver::update()
         divergenceMultigridPass.execute();
     }
     componentTimers[Divergence].end();
+}
 
+void FluidSolver::solvePressure()
+{
     componentTimers[PressureSolve].start();
     glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Pressure Solve");
     // not using passes for these since they dont work well with loops yet (eg lots of
@@ -902,7 +946,10 @@ void FluidSolver::update()
     }
     glPopDebugGroup();
     componentTimers[PressureSolve].end();
+}
 
+void FluidSolver::subtractPressureGradient()
+{
     componentTimers[PressureSubtraction].start();
     if(settings.solverMode == PressureSolver::Jacobi || settings.solverMode == PressureSolver::RBGaussSeidel)
     {
@@ -914,28 +961,6 @@ void FluidSolver::update()
     }
     velocityTexFront.swap(velocityTexBack);
     componentTimers[PressureSubtraction].end();
-
-    if(settings.calculateRemainingDivergence)
-    {
-        // todo: make more efficient, but low prio since not necessary for solver
-        componentTimers[DivergenceRemainder].start();
-        GLfloat zero = 0;
-        glClearNamedBufferData(divergenceSSBOs[frontBufferIndex], GL_R32F, GL_RED, GL_FLOAT, &zero);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, divergenceSSBOs[frontBufferIndex]);
-        glBindTextureUnit(0, velocityTexFront.getTextureID());
-        // glBindTextureUnit(1, rhsTextures[0].getTextureID());
-        divergenceRemainderPass.execute();
-        glGetNamedBufferSubData(
-            divergenceSSBOs[backBufferIndex], 0, 4 * sizeof(GLfloat), &remainingDivergence);
-        componentTimers[DivergenceRemainder].end();
-    }
-
-    glPopDebugGroup();
-
-    timer.end();
-
-    frontBufferIndex = !frontBufferIndex;
-    backBufferIndex = !backBufferIndex;
 }
 
 void FluidSolver::updateSettingsBuffer()
