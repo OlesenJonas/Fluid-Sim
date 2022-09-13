@@ -264,17 +264,41 @@ void drawFrameInfoUI(
                     fluidSolverSettings.iterations = temp;
                 }
             }
-            else
+            else if(fluidSolverSettings.solverMode == FluidSolver::PressureSolver::Multigrid)
             {
-                int tempIter = fluidSolverSettings.mgPrePostSmoothIterations;
-                if(ImGui::SliderInt("Pre- & Postsmoothing Iterations", &tempIter, 0, 255))
-                {
-                    fluidSolverSettings.mgPrePostSmoothIterations = tempIter;
-                }
                 int tempLevels = fluidSolverSettings.mgLevels;
                 if(ImGui::SliderInt("Multigrid Levels", &tempLevels, 1, fluidSolver.getLevels()))
                 {
                     fluidSolverSettings.mgLevels = tempLevels;
+                }
+                if(ImGui::TreeNode("Per Level Settings"))
+                {
+                    for(int i = 0; i < tempLevels - 1; i++)
+                    {
+                        ImGui::PushID(i);
+                        if(ImGui::TreeNode(("Level " + std::to_string(i)).c_str()))
+                        {
+                            int tempPreIter = fluidSolverSettings.mgLevelSettings[i].preSmoothIterations;
+                            if(ImGui::SliderInt("Presmoothing Iterations", &tempPreIter, 0, 10))
+                            {
+                                fluidSolverSettings.mgLevelSettings[i].preSmoothIterations = tempPreIter;
+                            }
+                            int tempPostIter = fluidSolverSettings.mgLevelSettings[i].postSmoothIterations;
+                            if(ImGui::SliderInt("Postsmoothing Iterations", &tempPostIter, 0, 10))
+                            {
+                                fluidSolverSettings.mgLevelSettings[i].postSmoothIterations = tempPostIter;
+                            }
+                            ImGui::TreePop();
+                        }
+                        ImGui::PopID();
+                    }
+                    // last level
+                    int tempIter = fluidSolverSettings.mgLevelSettings[tempLevels - 1].iterations;
+                    if(ImGui::SliderInt("Iterations on last level", &tempIter, 1, 255))
+                    {
+                        fluidSolverSettings.mgLevelSettings[tempLevels - 1].iterations = tempIter;
+                    }
+                    ImGui::TreePop();
                 }
             }
         }

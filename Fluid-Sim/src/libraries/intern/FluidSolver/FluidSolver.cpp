@@ -525,6 +525,8 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
              .internalFormat = scalarInternalFormat}};
     }
 
+    settings.mgLevelSettings.resize(levels);
+
     // not part of compute bindinds since these calls need to be made only once
     //(total amount of buffers is low enough that no binding point has to be reused)
 
@@ -777,11 +779,12 @@ void FluidSolver::update()
 
         //  V Cycle
         //  Downwards
-        for(int level = 0; level < settings.mgLevels; level++)
+        for(int level = 0; level < settings.mgLevels - 1; level++)
         {
             jacobiShader.useProgram();
             glBindTextureUnit(1, rhsTextures[level].getTextureID());
-            for(decltype(settings.mgPrePostSmoothIterations) i = 0; i < settings.mgPrePostSmoothIterations;
+            for(decltype(settings.mgLevelSettings[level].preSmoothIterations) i = 0;
+                i < settings.mgLevelSettings[level].preSmoothIterations;
                 i++)
             {
                 glBindTextureUnit(0, lhsTextures0[level].getTextureID());
@@ -802,54 +805,83 @@ void FluidSolver::update()
             }
             //"final" pressure is now in pressureTextures0[level]
 
-            // restrict if not on final level
-            if(level < settings.mgLevels - 1)
-            {
-                // write current level residual into pressureTextures1
-                residualShader.useProgram();
-                glBindTextureUnit(0, lhsTextures0[level].getTextureID());
-                glBindTextureUnit(1, rhsTextures[level].getTextureID());
-                glBindImageTexture(
-                    0,
-                    lhsTextures1[level].getTextureID(),
-                    0,
-                    GL_TRUE,
-                    0,
-                    GL_WRITE_ONLY,
-                    scalarInternalFormat);
-                glDispatchCompute(
-                    UintDivAndCeil(lhsTextures1[level].getDepth(), 16),
-                    UintDivAndCeil(lhsTextures1[level].getHeight(), 16),
-                    static_cast<uint32_t>(lhsTextures1[level].getDepth()));
-                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+            // restrict
 
-                // restrict from pressureTextures1 into divergenceTextures
-                restrictShader.useProgram();
-                glBindTextureUnit(0, lhsTextures1[level].getTextureID());
-                glBindImageTexture(
-                    0,
-                    rhsTextures[level + 1].getTextureID(),
-                    0,
-                    GL_TRUE,
-                    0,
-                    GL_WRITE_ONLY,
-                    scalarInternalFormat);
-                glDispatchCompute(
-                    UintDivAndCeil(rhsTextures[level + 1].getDepth(), 16),
-                    UintDivAndCeil(rhsTextures[level + 1].getHeight(), 16),
-                    static_cast<uint32_t>(rhsTextures[level + 1].getDepth()));
+            // write current level residual into pressureTextures1
+            residualShader.useProgram();
+            glBindTextureUnit(0, lhsTextures0[level].getTextureID());
+            glBindTextureUnit(1, rhsTextures[level].getTextureID());
+            glBindImageTexture(
+                0, lhsTextures1[level].getTextureID(), 0, GL_TRUE, 0, GL_WRITE_ONLY, scalarInternalFormat);
+            glDispatchCompute(
+                UintDivAndCeil(lhsTextures1[level].getDepth(), 16),
+                UintDivAndCeil(lhsTextures1[level].getHeight(), 16),
+                static_cast<uint32_t>(lhsTextures1[level].getDepth()));
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
-                // clear new levels initial pressure texture
-                const glm::vec4 clear = glm::vec4(0.0f);
-                glClearTexImage(lhsTextures0[level + 1].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
-            }
+            // restrict from pressureTextures1 into divergenceTextures
+            restrictShader.useProgram();
+            glBindTextureUnit(0, lhsTextures1[level].getTextureID());
+            glBindImageTexture(
+                0, rhsTextures[level + 1].getTextureID(), 0, GL_TRUE, 0, GL_WRITE_ONLY, scalarInternalFormat);
+            glDispatchCompute(
+                UintDivAndCeil(rhsTextures[level + 1].getDepth(), 16),
+                UintDivAndCeil(rhsTextures[level + 1].getHeight(), 16),
+                static_cast<uint32_t>(rhsTextures[level + 1].getDepth()));
+
+            // clear new levels initial pressure texture
+            const glm::vec4 clear = glm::vec4(0.0f);
+            glClearTexImage(lhsTextures0[level + 1].getTextureID(), 0, GL_RED, GL_FLOAT, &clear);
         }
-        //  Upwards
-        for(int level = settings.mgLevels - 1; level >= 0; level--)
+
+        // do iterations on last level
+        jacobiShader.useProgram();
+        glBindTextureUnit(1, rhsTextures[settings.mgLevels - 1].getTextureID());
+        for(decltype(settings.mgLevelSettings[settings.mgLevels - 1].iterations) i = 0;
+            i < settings.mgLevelSettings[settings.mgLevels - 1].iterations;
+            i++)
         {
+            glBindTextureUnit(0, lhsTextures0[settings.mgLevels - 1].getTextureID());
+            glBindImageTexture(
+                0,
+                lhsTextures1[settings.mgLevels - 1].getTextureID(),
+                0,
+                GL_TRUE,
+                0,
+                GL_WRITE_ONLY,
+                scalarInternalFormat);
+            glDispatchCompute(
+                UintDivAndCeil(lhsTextures0[settings.mgLevels - 1].getDepth(), 16),
+                UintDivAndCeil(lhsTextures0[settings.mgLevels - 1].getHeight(), 16),
+                static_cast<uint32_t>(lhsTextures0[settings.mgLevels - 1].getDepth()));
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+            lhsTextures0[settings.mgLevels - 1].swap(lhsTextures1[settings.mgLevels - 1]);
+        }
+
+        //  Upwards
+        for(int level = settings.mgLevels - 2; level >= 0; level--)
+        {
+            // interpolate and correct with solution on previous level
+
+            // currently interpolation and correction can easily be done in one step since
+            // interpolation just takes nearest neighbour
+            correctShader.useProgram();
+            glBindTextureUnit(0, lhsTextures0[level].getTextureID());
+            glBindTextureUnit(1, lhsTextures0[level + 1].getTextureID());
+            glBindImageTexture(
+                0, lhsTextures1[level].getTextureID(), 0, GL_TRUE, 0, GL_WRITE_ONLY, scalarInternalFormat);
+            glDispatchCompute(
+                UintDivAndCeil(lhsTextures1[level].getDepth(), 16),
+                UintDivAndCeil(lhsTextures1[level].getHeight(), 16),
+                static_cast<uint32_t>(lhsTextures0[level].getDepth()));
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+            lhsTextures0[level].swap(lhsTextures1[level]);
+
+            // postsmoothing iterations
             jacobiShader.useProgram();
             glBindTextureUnit(1, rhsTextures[level].getTextureID());
-            for(decltype(settings.mgPrePostSmoothIterations) i = 0; i < settings.mgPrePostSmoothIterations;
+            for(decltype(settings.mgLevelSettings[level].postSmoothIterations) i = 0;
+                i < settings.mgLevelSettings[level].postSmoothIterations;
                 i++)
             {
                 glBindTextureUnit(0, lhsTextures0[level].getTextureID());
@@ -867,32 +899,6 @@ void FluidSolver::update()
                     static_cast<uint32_t>(lhsTextures0[level].getDepth()));
                 glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
                 lhsTextures0[level].swap(lhsTextures1[level]);
-            }
-            //"final" guess is now in pressureTextures0[level]
-
-            // interpolate and correct if not on 0th level
-            if(level > 0)
-            {
-                // currently interpolation and correction can easily be done in one step since
-                // interpolation just takes nearest neighbour
-
-                correctShader.useProgram();
-                glBindTextureUnit(0, lhsTextures0[level - 1].getTextureID());
-                glBindTextureUnit(1, lhsTextures0[level].getTextureID());
-                glBindImageTexture(
-                    0,
-                    lhsTextures1[level - 1].getTextureID(),
-                    0,
-                    GL_TRUE,
-                    0,
-                    GL_WRITE_ONLY,
-                    scalarInternalFormat);
-                glDispatchCompute(
-                    UintDivAndCeil(lhsTextures1[level - 1].getDepth(), 16),
-                    UintDivAndCeil(lhsTextures1[level - 1].getHeight(), 16),
-                    static_cast<uint32_t>(lhsTextures0[level - 1].getDepth()));
-                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-                lhsTextures0[level - 1].swap(lhsTextures1[level - 1]);
             }
         }
 
