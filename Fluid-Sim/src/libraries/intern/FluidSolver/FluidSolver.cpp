@@ -438,9 +438,9 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
       divergenceMultigridPass(ComputepassDesc{
           .name = "Divergence",
           .shaderPtr = &divergenceMultigridShader,
-          .numX = UintDivAndCeil(width, 16),
-          .numY = UintDivAndCeil(height, 16),
-          .numZ = static_cast<uint32_t>(depth),
+          .numX = UintDivAndCeil(width + 1, 16),
+          .numY = UintDivAndCeil(height + 1, 16),
+          .numZ = static_cast<uint32_t>(depth + 1),
           .barriers = GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT,
           .textureBindings = {{.unit = 0, .texture = &velocityTexFront}},
           .imageBindings =
@@ -494,10 +494,6 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           .textureBindings = {{.unit = 0, .texture = &velocityTexFront}}})
 
 {
-    // not allocating these as 1 texture with multiple mips since then .swap() would swap all levels
-    // (since that just swaps the internal OGL object) which I dont want that to happen
-    // also in future with different grids I want mips of size n*2 + 1, so cant use default mips
-
     // for now just assume sizes are all POT
 
     for(int i = 0; i < levels; i++)
@@ -507,21 +503,21 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
         int levelDepth = std::max(depth / (1 << i), 1);
         rhsTextures[i] = Texture3D{
             {.name = std::format("rhsTexture_level{}", i).c_str(),
-             .width = levelWidth,
-             .height = levelHeight,
-             .depth = levelDepth,
+             .width = levelWidth + 1,
+             .height = levelHeight + 1,
+             .depth = levelDepth + 1,
              .internalFormat = scalarInternalFormat}};
         lhsTexturesFront[i] = Texture3D{
             {.name = std::format("lhsTexture0_level{}", i).c_str(),
-             .width = levelWidth,
-             .height = levelHeight,
-             .depth = levelDepth,
+             .width = levelWidth + 1,
+             .height = levelHeight + 1,
+             .depth = levelDepth + 1,
              .internalFormat = scalarInternalFormat}};
         lhsTexturesBack[i] = Texture3D{
             {.name = std::format("lhsTexture1_level{}", i).c_str(),
-             .width = levelWidth,
-             .height = levelHeight,
-             .depth = levelDepth,
+             .width = levelWidth + 1,
+             .height = levelHeight + 1,
+             .depth = levelDepth + 1,
              .internalFormat = scalarInternalFormat}};
     }
 
