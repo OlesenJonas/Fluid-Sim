@@ -156,6 +156,13 @@ class FluidSolver
     }
 
   private:
+    void advectQuantities();
+    void addImpulse();
+    void addBuoyancy();
+    void calculateDivergence();
+    void solvePressure();
+    void subtractPressureGradient();
+
     Context& ctx;
 
     const GLsizei width = -1;
