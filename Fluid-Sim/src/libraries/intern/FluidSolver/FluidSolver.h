@@ -39,15 +39,15 @@ class FluidSolver
 
     inline const Texture3D& getVelocityTexture() const
     {
-        return velocityTex0;
+        return velocityTexFront;
     }
     inline const Texture3D& getDensityTexture() const
     {
-        return densityTex0;
+        return densityTexFront;
     }
     inline const Texture3D& getTemperatureTexture() const
     {
-        return temperatureTex0;
+        return temperatureTexFront;
     }
 
     enum Timer
@@ -190,22 +190,22 @@ class FluidSolver
 
     // todo: optimize, re-use textures for different passes
     //       use references to keep names for readability
-    Texture3D velocityTex0;
-    Texture3D velocityTex1;
+    Texture3D velocityTexFront;
+    Texture3D velocityTexBack;
     Texture3D vectorPhiTildeTex;
     Texture3D vectorPhiTilde2Tex;
-    Texture3D densityTex0;
-    Texture3D densityTex1;
-    Texture3D temperatureTex0;
-    Texture3D temperatureTex1;
+    Texture3D densityTexFront;
+    Texture3D densityTexBack;
+    Texture3D temperatureTexFront;
+    Texture3D temperatureTexBack;
     Texture3D scalarPhiTildeTex;
     Texture3D scalarPhiTilde2Tex;
     Texture3D divergenceTex;
-    Texture3D pressureTex0;
-    Texture3D pressureTex1;
+    Texture3D pressureTexFront;
+    Texture3D pressureTexBack;
 
-    std::vector<Texture3D> lhsTextures0;
-    std::vector<Texture3D> lhsTextures1;
+    std::vector<Texture3D> lhsTexturesFront;
+    std::vector<Texture3D> lhsTexturesBack;
     std::vector<Texture3D> rhsTextures;
 
     const Computepass advectVelocitySimplePass;
