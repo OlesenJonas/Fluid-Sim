@@ -49,7 +49,6 @@ int main()
     int HEIGHT = 800;
 
     GLFWwindow* window = initAndCreateGLFWWindow(WIDTH, HEIGHT, "Fluid Sim", {{GLFW_MAXIMIZED, GLFW_TRUE}});
-    // window = initAndCreateGLFWWindow(WIDTH, HEIGHT, "AnimSim22");
     ctx.setWindow(window);
     // disable VSYNC
     glfwSwapInterval(0);
@@ -73,6 +72,7 @@ int main()
     //----------------------- INIT IMGUI
 
     InputManager input(ctx);
+    input.enableFixedTimestep(0.01);
     ctx.setInputManager(&input);
     input.setupCallbacks();
 

@@ -22,16 +22,65 @@ void main()
     && texelPos.z < textureSize.z
     )
     {
-        //cell centered restriction, merge 8 texels -> 1
-        float average = texelFetchOffset(rh, 2*texelPos, 0, ivec3(0, 0, 0)).x;
-        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(0, 0, 1)).x;
-        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(0, 1, 0)).x;
-        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(0, 1, 1)).x;
-        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(1, 0, 0)).x;
-        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(1, 0, 1)).x;
-        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(1, 1, 0)).x;
-        average      += texelFetchOffset(rh, 2*texelPos, 0, ivec3(1, 1, 1)).x;
-        average /= 8.0;
+        ivec3 centerCoord = 2*texelPos;
+
+        //todo: SOOOOO MANY SAMPLES, share memory?!
+        float xprev_yprev_zprev = texelFetchOffset(rh, 2*texelPos, 0, ivec3(-1,-1,-1)).x;
+        float xprev_yprev_zcent = texelFetchOffset(rh, 2*texelPos, 0, ivec3(-1,-1, 0)).x;
+        float xprev_yprev_znext = texelFetchOffset(rh, 2*texelPos, 0, ivec3(-1,-1, 1)).x;
+
+        float xprev_ycent_zprev = texelFetchOffset(rh, 2*texelPos, 0, ivec3(-1, 0,-1)).x;
+        float xprev_ycent_zcent = texelFetchOffset(rh, 2*texelPos, 0, ivec3(-1, 0, 0)).x;
+        float xprev_ycent_znext = texelFetchOffset(rh, 2*texelPos, 0, ivec3(-1, 0, 1)).x;
+
+        float xprev_ynext_zprev = texelFetchOffset(rh, 2*texelPos, 0, ivec3(-1, 1,-1)).x;
+        float xprev_ynext_zcent = texelFetchOffset(rh, 2*texelPos, 0, ivec3(-1, 1, 0)).x;
+        float xprev_ynext_znext = texelFetchOffset(rh, 2*texelPos, 0, ivec3(-1, 1, 1)).x;
+
+        
+        float xcent_yprev_zprev = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 0,-1,-1)).x;
+        float xcent_yprev_zcent = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 0,-1, 0)).x;
+        float xcent_yprev_znext = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 0,-1, 1)).x;
+
+        float xcent_ycent_zprev = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 0, 0,-1)).x;
+        float xcent_ycent_zcent = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 0, 0, 0)).x;
+        float xcent_ycent_znext = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 0, 0, 1)).x;
+
+        float xcent_ynext_zprev = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 0, 1,-1)).x;
+        float xcent_ynext_zcent = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 0, 1, 0)).x;
+        float xcent_ynext_znext = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 0, 1, 1)).x;
+
+        
+        float xnext_yprev_zprev = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 1,-1,-1)).x;
+        float xnext_yprev_zcent = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 1,-1, 0)).x;
+        float xnext_yprev_znext = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 1,-1, 1)).x;
+
+        float xnext_ycent_zprev = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 1, 0,-1)).x;
+        float xnext_ycent_zcent = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 1, 0, 0)).x;
+        float xnext_ycent_znext = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 1, 0, 1)).x;
+
+        float xnext_ynext_zprev = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 1, 1,-1)).x;
+        float xnext_ynext_zcent = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 1, 1, 0)).x;
+        float xnext_ynext_znext = texelFetchOffset(rh, 2*texelPos, 0, ivec3( 1, 1, 1)).x;
+
+
+        float average = 0;
+        float weightOne = xprev_yprev_zprev + xprev_yprev_znext + xprev_ynext_zprev + xprev_ynext_znext
+                        + xnext_yprev_zprev + xnext_yprev_znext + xnext_ynext_zprev + xnext_ynext_znext;
+        
+        float weightTwo = xprev_yprev_zcent + xprev_ycent_zprev + xprev_ycent_znext + xprev_ynext_zcent
+                        + xcent_yprev_zprev + xcent_yprev_znext + xcent_ynext_zprev + xcent_ynext_znext
+                        + xnext_yprev_zcent + xnext_ycent_zprev + xnext_ycent_znext + xnext_ynext_zcent;
+        weightTwo *= 2.0;
+
+        float weightFour = xprev_ycent_zcent + xcent_yprev_zcent + xcent_ycent_zprev + xcent_ycent_znext
+                         + xcent_ynext_zcent + xnext_ycent_zcent;
+        weightFour *= 4.0;
+
+        float weightEight = xcent_ycent_zcent;
+        weightEight *= 8.0;
+
+        average = (weightOne + weightTwo + weightFour + weightEight)/64.0;
 
         imageStore(r2h, texelPos, vec4(average));
     }

@@ -1,0 +1,69 @@
+//not a general jacobian solver, currently hardcoded for solving the pressure equation
+//multigrid version
+
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#ifndef FORMAT
+    #define FORMAT r16f
+#endif
+
+uniform layout (binding = 0) sampler3D pressureIn;
+uniform layout (binding = 1) sampler3D divergence;
+uniform layout(FORMAT, binding = 0) writeonly restrict image3D pressureOut;
+
+const float alpha = -1.0;
+const float beta = 6.0;
+
+void main() 
+{
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID);
+    ivec3 texSize = imageSize(pressureOut);
+    if(texelPos.x < texSize.x 
+    && texelPos.y < texSize.y
+    && texelPos.z < texSize.z
+    )
+    {
+        //x vector (p)
+        float xprev = texelFetchOffset(pressureIn, texelPos, 0, ivec3(-1, 0, 0)).x;
+        float xnext = texelFetchOffset(pressureIn, texelPos, 0, ivec3( 1, 0, 0)).x;
+        float yprev = texelFetchOffset(pressureIn, texelPos, 0, ivec3( 0,-1, 0)).x;
+        float ynext = texelFetchOffset(pressureIn, texelPos, 0, ivec3( 0, 1, 0)).x;
+        float zprev = texelFetchOffset(pressureIn, texelPos, 0, ivec3( 0, 0,-1)).x;
+        float znext = texelFetchOffset(pressureIn, texelPos, 0, ivec3( 0, 0, 1)).x;
+
+        //enforce boundary conditions, pressure gradient across border should be 0
+        if(texelPos.x == 0)
+            xprev = xnext;
+        if(texelPos.x == texSize.x-1)
+            xnext = xprev;
+        if(texelPos.y == 0)
+            yprev = ynext;
+        if(texelPos.y == texSize.y-1)
+            ynext = yprev;
+        if(texelPos.z == 0)
+            zprev = znext;
+        if(texelPos.z == texSize.z-1)
+            znext = zprev;
+
+        //for dx/dy/dz, since values are stored at corners
+        texSize = texSize - 1;
+
+        //b vector (div(w))
+        float div = texelFetch(divergence, texelPos, 0).x;
+
+        const float deltaXSq = 1.0/(texSize.x*texSize.x);
+        const float deltaYSq = 1.0/(texSize.y*texSize.y);
+        const float deltaZSq = 1.0/(texSize.z*texSize.z);
+
+        //a_ij
+        float diagA = (-2/deltaXSq) + (-2/deltaYSq) + (-2/deltaZSq);
+
+        //x^(k+1)
+        float relaxed = div - xprev/deltaXSq - xnext/deltaXSq - yprev/deltaYSq - ynext/deltaYSq - zprev/deltaZSq - znext/deltaZSq;
+        relaxed *= 1/diagA;
+
+        imageStore(pressureOut, texelPos, vec4(relaxed));
+    }
+}

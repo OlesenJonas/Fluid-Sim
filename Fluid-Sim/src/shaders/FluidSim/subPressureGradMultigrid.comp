@@ -15,75 +15,53 @@ uniform layout(FORMAT, binding = 0) writeonly restrict image3D velocityOut;
 void main() 
 {
     ivec3 texelPos = ivec3(gl_GlobalInvocationID);
-    ivec3 textureSize = imageSize(velocityOut);
-    if(texelPos.x < textureSize.x 
-    && texelPos.y < textureSize.y 
-    && texelPos.z < textureSize.z
+    ivec3 texSize = imageSize(velocityOut);
+    if(texelPos.x < texSize.x 
+    && texelPos.y < texSize.y 
+    && texelPos.z < texSize.z
     )
     {
-        // if(texelPos.x == 0 || texelPos.x == textureSize.x-1
-        // || texelPos.y == 0 || texelPos.y == textureSize.y-1
-        // || texelPos.z == 0 || texelPos.z == textureSize.z-1)
-        // {
-        //     imageStore(velocityOut, texelPos, vec4(0.0));
-        //     return;
-        // }
+        float xprev_yprev_zprev = texelFetchOffset(pressure, texelPos, 0, ivec3( 0, 0, 0)).x;
+        float xprev_yprev_znext = texelFetchOffset(pressure, texelPos, 0, ivec3( 0, 0, 1)).x;
+        float xprev_ynext_zprev = texelFetchOffset(pressure, texelPos, 0, ivec3( 0, 1, 0)).x;
+        float xprev_ynext_znext = texelFetchOffset(pressure, texelPos, 0, ivec3( 0, 1, 1)).x;
+        float xnext_yprev_zprev = texelFetchOffset(pressure, texelPos, 0, ivec3( 1, 0, 0)).x;
+        float xnext_yprev_znext = texelFetchOffset(pressure, texelPos, 0, ivec3( 1, 0, 1)).x;
+        float xnext_ynext_zprev = texelFetchOffset(pressure, texelPos, 0, ivec3( 1, 1, 0)).x;
+        float xnext_ynext_znext = texelFetchOffset(pressure, texelPos, 0, ivec3( 1, 1, 1)).x;
 
-        // vec2 uv = (vec2(texelPos)+0.5)/vec2(textureSize);
-        float xprev = texelFetchOffset(pressure, texelPos, 0, ivec3(-1, 0, 0)).x;
-        float xnext = texelFetchOffset(pressure, texelPos, 0, ivec3( 1, 0, 0)).x;
-        float yprev = texelFetchOffset(pressure, texelPos, 0, ivec3( 0,-1, 0)).x;
-        float ynext = texelFetchOffset(pressure, texelPos, 0, ivec3( 0, 1, 0)).x;
-        float zprev = texelFetchOffset(pressure, texelPos, 0, ivec3( 0, 0,-1)).x;
-        float znext = texelFetchOffset(pressure, texelPos, 0, ivec3( 0, 0, 1)).x;
+        float xprev = 0.25*(xprev_yprev_zprev + xprev_yprev_znext + xprev_ynext_zprev + xprev_ynext_znext);
+        float xnext = 0.25*(xnext_yprev_zprev + xnext_yprev_znext + xnext_ynext_zprev + xnext_ynext_znext);
 
-        float center  = texelFetch(pressure, texelPos, 0).x;
+        float yprev = 0.25*(xprev_yprev_zprev + xprev_yprev_znext + xnext_yprev_zprev + xnext_yprev_znext);
+        float ynext = 0.25*(xprev_ynext_zprev + xprev_ynext_znext + xnext_ynext_zprev + xnext_ynext_znext);
 
-        //enforce the boundary conditions
-        //(borders need to have same pressure as their neighbours so that gradient is 0)
-        //(also cancel out velocity orthogonal to boundary normal, ie: for top border->remove vertical component of velocity
-        // so that velocity only moves along border, not through it)
-        //(in theory actually have to replace component with obstacles velocity, but only walls here where v=0)
+        float zprev = 0.25*(xprev_yprev_zprev + xprev_ynext_zprev + xnext_yprev_zprev + xnext_ynext_zprev);
+        float znext = 0.25*(xprev_yprev_znext + xprev_ynext_znext + xnext_yprev_znext + xnext_ynext_znext);
+
         vec3 velocityMask = vec3(1.0);
-        if(texelPos.x == 0)
+        // this can probably be done smarter with the boolean vector ops?
+        if(texelPos.x == 0 || texelPos.x == texSize.x-1)
         {
-            xprev = center;
             velocityMask.x = 0;
         }
-        if(texelPos.x == textureSize.x-1)
+        if(texelPos.y == 0 || texelPos.y == texSize.y-1)
         {
-            xnext = center;
-            velocityMask.x = 0;
-        }
-        if(texelPos.y == 0)
-        {
-            yprev = center;
             velocityMask.y = 0;
         }
-        if(texelPos.y == textureSize.y-1)
+        if(texelPos.z == 0 || texelPos.z == texSize.z-1)
         {
-            ynext = center;
-            velocityMask.y = 0;
-        }
-        if(texelPos.z == 0)
-        {
-            zprev = center;
-            velocityMask.z = 0;
-        }
-        if(texelPos.z == textureSize.z-1)
-        {
-            znext = center;
             velocityMask.z = 0;
         }
         
-        const float deltaX = 1.0/textureSize.x;
-        const float deltaY = 1.0/textureSize.y;
-        const float deltaZ = 1.0/textureSize.z;
+        const float deltaX = 1.0/texSize.x;
+        const float deltaY = 1.0/texSize.y;
+        const float deltaZ = 1.0/texSize.z;
 
         vec3 gradient = vec3(
-            (xnext - xprev)/(2*deltaX),
-            (ynext - yprev)/(2*deltaY),
-            (znext - zprev)/(2*deltaZ));
+            (xnext - xprev)/(deltaX),
+            (ynext - yprev)/(deltaY),
+            (znext - zprev)/(deltaZ));
         
         vec3 oldVel = texelFetch(velocityIn, texelPos, 0).xyz;
         vec3 newVel = oldVel - gradient;

@@ -51,6 +51,9 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
           {{"FORMAT", scalarShaderFormat}}),
       jacobiShader(
           COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/jacobi.comp"}, {{"FORMAT", scalarShaderFormat}}),
+      jacobiMultigridShader(
+          COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/jacobiMultigrid.comp"},
+          {{"FORMAT", scalarShaderFormat}}),
       gaussSeidelShader(
           COMPUTE_SHADER_BIT, {SHADERS_PATH "/FluidSim/rbGaussSeidel.comp"},
           {{"FORMAT", scalarShaderFormat}}),
@@ -821,7 +824,7 @@ void FluidSolver::solvePressure()
         //  Downwards
         for(int level = 0; level < settings.mgLevels - 1; level++)
         {
-            jacobiShader.useProgram();
+            jacobiMultigridShader.useProgram();
             glBindTextureUnit(1, rhsTextures[level].getTextureID());
             for(decltype(settings.mgLevelSettings[level].preSmoothIterations) i = 0;
                 i < settings.mgLevelSettings[level].preSmoothIterations;
@@ -875,7 +878,7 @@ void FluidSolver::solvePressure()
         }
 
         // do iterations on last level
-        jacobiShader.useProgram();
+        jacobiMultigridShader.useProgram();
         glBindTextureUnit(1, rhsTextures[settings.mgLevels - 1].getTextureID());
         for(decltype(settings.mgLevelSettings[settings.mgLevels - 1].iterations) i = 0;
             i < settings.mgLevelSettings[settings.mgLevels - 1].iterations;
@@ -918,7 +921,7 @@ void FluidSolver::solvePressure()
             lhsTexturesFront[level].swap(lhsTexturesBack[level]);
 
             // postsmoothing iterations
-            jacobiShader.useProgram();
+            jacobiMultigridShader.useProgram();
             glBindTextureUnit(1, rhsTextures[level].getTextureID());
             for(decltype(settings.mgLevelSettings[level].postSmoothIterations) i = 0;
                 i < settings.mgLevelSettings[level].postSmoothIterations;

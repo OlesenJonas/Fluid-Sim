@@ -35,17 +35,20 @@ void main()
         //enforce boundary conditions, gradient across border should be 0
         //values are cell centered
         if(texelPos.x == 0)
-            xprev = center;
+            xprev = xnext;
         if(texelPos.x == textureSize.x-1)
-            xnext = center;
+            xnext = xprev;
         if(texelPos.y == 0)
-            yprev = center;
+            yprev = ynext;
         if(texelPos.y == textureSize.y-1)
-            ynext = center;
+            ynext = yprev;
         if(texelPos.z == 0)
-            zprev = center;
+            zprev = znext;
         if(texelPos.z == textureSize.z-1)
-            znext = center;
+            znext = zprev;
+
+        //for dx/dy/dz, since values are stored at corners
+        textureSize -= 1;
 
         const float deltaXSq = 1.0/(textureSize.x*textureSize.x);
         const float deltaYSq = 1.0/(textureSize.y*textureSize.y);

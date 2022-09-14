@@ -99,14 +99,14 @@ class FluidSolver
         // ---
         bool useLastFrameAsInitialGuess = false;
         PressureSolver solverMode = PressureSolver::Jacobi;
-        uint16_t iterations = 40;
+        uint16_t iterations = 10;
         struct LevelSettings
         {
             uint16_t preSmoothIterations = 10;
             uint16_t postSmoothIterations = 10;
             uint16_t iterations = 10;
         };
-        uint16_t mgLevels = 2;
+        uint16_t mgLevels = 1;
         std::vector<LevelSettings> mgLevelSettings;
         bool calculateRemainingDivergence = false;
     };
@@ -187,6 +187,7 @@ class FluidSolver
     ShaderProgram divergenceShader;
     ShaderProgram divergenceMultigridShader;
     ShaderProgram jacobiShader;
+    ShaderProgram jacobiMultigridShader;
     ShaderProgram gaussSeidelShader;
     ShaderProgram residualShader;
     ShaderProgram restrictShader;
