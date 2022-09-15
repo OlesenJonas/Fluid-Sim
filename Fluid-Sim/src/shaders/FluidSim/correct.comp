@@ -16,107 +16,114 @@ uniform layout(FORMAT, binding = 0) writeonly restrict image3D correctedGuessTex
 void main() 
 {
     ivec3 texelPos = ivec3(gl_GlobalInvocationID);
-    ivec3 textureSize = imageSize(correctedGuessTex);
+    ivec3 texSize = imageSize(correctedGuessTex);
 
-    if(texelPos.x < textureSize.x 
-    && texelPos.y < textureSize.y
-    && texelPos.z < textureSize.z
+    if(texelPos.x < texSize.x 
+    && texelPos.y < texSize.y
+    && texelPos.z < texSize.z
     )
     {
-        bool xeven = texelPos.x % 2 == 0;
-        bool yeven = texelPos.y % 2 == 0;
-        bool zeven = texelPos.z % 2 == 0;
+        // bool xeven = texelPos.x % 2 == 0;
+        // bool yeven = texelPos.y % 2 == 0;
+        // bool zeven = texelPos.z % 2 == 0;
 
-        //better way with less branching? seems terrible
-        //use local storage to share loads at least?
+        // // better way with less branching? seems terrible
+        // // use local storage to share loads at least?
 
-        float error = 0.0;
-        if(xeven)
-        {
-            if(yeven)
-            {
-                if(zeven)
-                {
-                    error = texelFetch(e2h, texelPos / 2, 0).x;
-                }
-                else //z uneven
-                {
-                    error = 0.5*(
-                        texelFetchOffset(e2h, (texelPos-ivec3(0,0,1)) / 2, 0, ivec3( 0, 0, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(0,0,1)) / 2, 0, ivec3( 0, 0, 1)).x
-                        );
-                }
-            }
-            else //y uneven
-            {
-                if(zeven)
-                {
-                    error = 0.5*(
-                        texelFetchOffset(e2h, (texelPos-ivec3(0,1,0)) / 2, 0, ivec3( 0, 0, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(0,1,0)) / 2, 0, ivec3( 0, 1, 0)).x
-                        );
-                }
-                else //z uneven
-                {
-                    error = 0.25*(
-                        texelFetchOffset(e2h, (texelPos-ivec3(0,1,1)) / 2, 0, ivec3( 0, 0, 1)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(0,1,1)) / 2, 0, ivec3( 0, 0, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(0,1,1)) / 2, 0, ivec3( 0, 1, 1)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(0,1,1)) / 2, 0, ivec3( 0, 1, 0)).x
-                        );
-                }
+        // float error = 0.0;
+        // if(xeven)
+        // {
+        //     if(yeven)
+        //     {
+        //         if(zeven)
+        //         {
+        //             error = texelFetch(e2h, texelPos / 2, 0).x;
+        //         }
+        //         else //z uneven
+        //         {
+        //             error = 0.5*(
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(0,0,1)) / 2, 0, ivec3( 0, 0, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(0,0,1)) / 2, 0, ivec3( 0, 0, 1)).x
+        //                 );
+        //         }
+        //     }
+        //     else //y uneven
+        //     {
+        //         if(zeven)
+        //         {
+        //             error = 0.5*(
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(0,1,0)) / 2, 0, ivec3( 0, 0, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(0,1,0)) / 2, 0, ivec3( 0, 1, 0)).x
+        //                 );
+        //         }
+        //         else //z uneven
+        //         {
+        //             error = 0.25*(
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(0,1,1)) / 2, 0, ivec3( 0, 0, 1)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(0,1,1)) / 2, 0, ivec3( 0, 0, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(0,1,1)) / 2, 0, ivec3( 0, 1, 1)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(0,1,1)) / 2, 0, ivec3( 0, 1, 0)).x
+        //                 );
+        //         }
 
-            }
-        }
-        else //x is uneven
-        {
-            if(yeven)
-            {
-                if(zeven)
-                {
-                    error = 0.5*(
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,0,0)) / 2, 0, ivec3( 0, 0, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,0,0)) / 2, 0, ivec3( 1, 0, 0)).x
-                        );
-                }
-                else //z uneven
-                {
-                    error = 0.25*(
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,0,1)) / 2, 0, ivec3( 0, 0, 1)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,0,1)) / 2, 0, ivec3( 0, 0, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,0,1)) / 2, 0, ivec3( 1, 0, 1)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,0,1)) / 2, 0, ivec3( 1, 0, 0)).x
-                        );
-                }
-            }
-            else //y uneven
-            {
-                if(zeven)
-                {
-                    error = 0.25*(
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,0)) / 2, 0, ivec3( 0, 1, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,0)) / 2, 0, ivec3( 0, 0, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,0)) / 2, 0, ivec3( 1, 1, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,0)) / 2, 0, ivec3( 1, 0, 0)).x
-                        );
-                }
-                else //z uneven
-                {
-                    error = 0.125*(
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 0, 0, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 0, 0, 1)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 0, 1, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 0, 1, 1)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 1, 0, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 1, 0, 1)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 1, 1, 0)).x +
-                        texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 1, 1, 1)).x 
-                        );
-                }
+        //     }
+        // }
+        // else //x is uneven
+        // {
+        //     if(yeven)
+        //     {
+        //         if(zeven)
+        //         {
+        //             error = 0.5*(
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,0,0)) / 2, 0, ivec3( 0, 0, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,0,0)) / 2, 0, ivec3( 1, 0, 0)).x
+        //                 );
+        //         }
+        //         else //z uneven
+        //         {
+        //             error = 0.25*(
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,0,1)) / 2, 0, ivec3( 0, 0, 1)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,0,1)) / 2, 0, ivec3( 0, 0, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,0,1)) / 2, 0, ivec3( 1, 0, 1)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,0,1)) / 2, 0, ivec3( 1, 0, 0)).x
+        //                 );
+        //         }
+        //     }
+        //     else //y uneven
+        //     {
+        //         if(zeven)
+        //         {
+        //             error = 0.25*(
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,0)) / 2, 0, ivec3( 0, 1, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,0)) / 2, 0, ivec3( 0, 0, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,0)) / 2, 0, ivec3( 1, 1, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,0)) / 2, 0, ivec3( 1, 0, 0)).x
+        //                 );
+        //         }
+        //         else //z uneven
+        //         {
+        //             error = 0.125*(
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 0, 0, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 0, 0, 1)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 0, 1, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 0, 1, 1)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 1, 0, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 1, 0, 1)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 1, 1, 0)).x +
+        //                 texelFetchOffset(e2h, (texelPos-ivec3(1,1,1)) / 2, 0, ivec3( 1, 1, 1)).x 
+        //                 );
+        //         }
 
-            }
+        //     }
 
-        }
+        // }
+
+        //the above could seems to just be replicating linear interpolation in all 3 axis
+        //so just use hardware interpolation instead
+        //gives exact same result in comparison
+        vec3 samplePos = vec3(texelPos)/2.0 + 0.5;
+        samplePos /= vec3(textureSize(e2h, 0));
+        float error = textureLod(e2h, samplePos, 0.0).x;
 
         float currentGuess = texelFetch(currentGuessTex, texelPos, 0).x;
 

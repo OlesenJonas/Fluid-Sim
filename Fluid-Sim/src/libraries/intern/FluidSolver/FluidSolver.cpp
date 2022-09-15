@@ -509,19 +509,34 @@ FluidSolver::FluidSolver(Context& ctx, GLsizei width, GLsizei height, GLsizei de
              .width = levelWidth + 1,
              .height = levelHeight + 1,
              .depth = levelDepth + 1,
-             .internalFormat = scalarInternalFormat}};
+             .internalFormat = scalarInternalFormat,
+             .minFilter = GL_LINEAR,
+             .magFilter = GL_LINEAR,
+             .wrapS = GL_MIRRORED_REPEAT,
+             .wrapT = GL_MIRRORED_REPEAT,
+             .wrapR = GL_MIRRORED_REPEAT}};
         lhsTexturesFront[i] = Texture3D{
             {.name = std::format("lhsTexture0_level{}", i).c_str(),
              .width = levelWidth + 1,
              .height = levelHeight + 1,
              .depth = levelDepth + 1,
-             .internalFormat = scalarInternalFormat}};
+             .internalFormat = scalarInternalFormat,
+             .minFilter = GL_LINEAR,
+             .magFilter = GL_LINEAR,
+             .wrapS = GL_MIRRORED_REPEAT,
+             .wrapT = GL_MIRRORED_REPEAT,
+             .wrapR = GL_MIRRORED_REPEAT}};
         lhsTexturesBack[i] = Texture3D{
             {.name = std::format("lhsTexture1_level{}", i).c_str(),
              .width = levelWidth + 1,
              .height = levelHeight + 1,
              .depth = levelDepth + 1,
-             .internalFormat = scalarInternalFormat}};
+             .internalFormat = scalarInternalFormat,
+             .minFilter = GL_LINEAR,
+             .magFilter = GL_LINEAR,
+             .wrapS = GL_MIRRORED_REPEAT,
+             .wrapT = GL_MIRRORED_REPEAT,
+             .wrapR = GL_MIRRORED_REPEAT}};
     }
 
     settings.mgLevelSettings.resize(levels);
