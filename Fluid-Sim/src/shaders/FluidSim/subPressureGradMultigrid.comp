@@ -40,7 +40,7 @@ void main()
         float znext = 0.25*(xprev_yprev_znext + xprev_ynext_znext + xnext_yprev_znext + xnext_ynext_znext);
 
         vec3 velocityMask = vec3(1.0);
-        // this can probably be done smarter with the boolean vector ops?
+        // this can probably be done in a cleaner way with the boolean vector ops?
         if(texelPos.x == 0 || texelPos.x == texSize.x-1)
         {
             velocityMask.x = 0;

@@ -16,11 +16,11 @@ uniform layout(FORMAT, binding = 0) writeonly restrict image3D residualTex;
 void main() 
 {
     ivec3 texelPos = ivec3(gl_GlobalInvocationID);
-    ivec3 textureSize = imageSize(residualTex);
+    ivec3 texSize = imageSize(residualTex);
 
-    if(texelPos.x < textureSize.x 
-    && texelPos.y < textureSize.y
-    && texelPos.z < textureSize.z
+    if(texelPos.x < texSize.x 
+    && texelPos.y < texSize.y
+    && texelPos.z < texSize.z
     )
     {
         // calculate laplace of current guess (Ax')
@@ -36,23 +36,23 @@ void main()
         //values are cell centered
         if(texelPos.x == 0)
             xprev = xnext;
-        if(texelPos.x == textureSize.x-1)
+        if(texelPos.x == texSize.x-1)
             xnext = xprev;
         if(texelPos.y == 0)
             yprev = ynext;
-        if(texelPos.y == textureSize.y-1)
+        if(texelPos.y == texSize.y-1)
             ynext = yprev;
         if(texelPos.z == 0)
             zprev = znext;
-        if(texelPos.z == textureSize.z-1)
+        if(texelPos.z == texSize.z-1)
             znext = zprev;
 
         //for dx/dy/dz, since values are stored at corners
-        textureSize -= 1;
+        texSize -= 1;
 
-        const float deltaXSq = 1.0/(textureSize.x*textureSize.x);
-        const float deltaYSq = 1.0/(textureSize.y*textureSize.y);
-        const float deltaZSq = 1.0/(textureSize.z*textureSize.z);
+        const float deltaXSq = 1.0/(texSize.x*texSize.x);
+        const float deltaYSq = 1.0/(texSize.y*texSize.y);
+        const float deltaZSq = 1.0/(texSize.z*texSize.z);
 
         float laplace = (xprev - 2*center + xnext)/deltaXSq;
         laplace      += (yprev - 2*center + ynext)/deltaYSq;
