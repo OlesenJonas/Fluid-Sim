@@ -11,7 +11,8 @@ C++ 20
 vcpkg for dependencies (currently glfw + glm)
 
 
-https://user-images.githubusercontent.com/45714731/186457776-b890af08-02d7-4353-bf22-6961790abb73.mp4
+https://user-images.githubusercontent.com/45714731/190432458-3c7ecffb-7e99-4087-aaec-62e8f3362b19.mp4
+
 
 ## Features
 
@@ -29,6 +30,7 @@ Velocity, Dust/Smoke Density, Temperature
 - Basic Red-Black Gauss-Seidel
 - Multigrid Jacobi
   - Only very basic restriction/interpolation schemes so far
+    - Full-Weighting as outlined in "A Multigrid Tutorial" is implemented on the multigrid branch, but im not yet sure if totally correct
 
 ### Rendering
 - Brute Force Raymarcher following: https://shaderbits.com/blog/creating-volumetric-ray-marcher
